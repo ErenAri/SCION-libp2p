@@ -85,9 +85,14 @@ func (m *Manager) BestPath(target peer.ID) *Path {
 		return nil
 	}
 
-	// Use epsilon-greedy selection if that policy is active.
-	if eg, ok := m.policy.(EpsilonGreedyPolicy); ok {
-		return eg.SelectPath(ps.All())
+	// Use specialized selection for policies that implement it.
+	switch p := m.policy.(type) {
+	case EpsilonGreedyPolicy:
+		return p.SelectPath(ps.All())
+	case *DecayingEpsilonGreedyPolicy:
+		return p.SelectPath(ps.All())
+	case *UCB1Policy:
+		return p.SelectPath(ps.All())
 	}
 
 	return ps.Best(m.policy)

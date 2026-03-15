@@ -32,6 +32,7 @@ var (
 	benchExperiment  string
 	benchOutputJSON  string
 	benchOutputCSV   string
+	benchRuns        int
 )
 
 func init() {
@@ -44,6 +45,7 @@ func init() {
 	benchCmd.Flags().StringVar(&benchExperiment, "experiment", "compare", "experiment type: single, compare, scalability")
 	benchCmd.Flags().StringVar(&benchOutputJSON, "output-json", "", "output JSON results to file")
 	benchCmd.Flags().StringVar(&benchOutputCSV, "output-csv", "", "output CSV results to file")
+	benchCmd.Flags().IntVar(&benchRuns, "runs", 1, "number of runs per configuration (results averaged)")
 
 	rootCmd.AddCommand(benchCmd)
 }
@@ -105,9 +107,9 @@ func runSingleBench() error {
 }
 
 func runCompareBench() error {
-	slog.Info("running three-way comparison", "nodes", benchNodes)
+	slog.Info("running policy comparison", "nodes", benchNodes, "runs", benchRuns)
 
-	results, err := bench.RunComparison(benchNodes, benchContentSize, benchRequests, benchChunkSize)
+	results, err := bench.RunComparisonWithRuns(benchNodes, benchContentSize, benchRequests, benchChunkSize, benchRuns)
 	if err != nil {
 		return fmt.Errorf("comparison failed: %w", err)
 	}
@@ -134,7 +136,7 @@ func runScalabilityBench() error {
 	nodeCounts := []int{5, 10, 25}
 	slog.Info("running scalability experiment", "node_counts", nodeCounts)
 
-	results, err := bench.RunScalability(nodeCounts, benchContentSize, benchRequests, benchChunkSize)
+	results, err := bench.RunScalability(nodeCounts, benchContentSize, benchRequests, benchChunkSize, benchRuns)
 	if err != nil {
 		return fmt.Errorf("scalability experiment failed: %w", err)
 	}

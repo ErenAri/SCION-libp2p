@@ -43,7 +43,7 @@ The Internet's routing architecture is path-oblivious: end hosts have no control
 
 When multiple relay paths exist between two libp2p peers, the standard stack picks one arbitrarily. Under load, a greedy optimization that always selects the lowest-latency path causes all peers to converge on the same route, leading to the \emph{herd effect}---a well-studied phenomenon in path-aware networks~\cite{pathselection2025} where rational path selection by individual agents produces collectively suboptimal outcomes.
 
-We present \textsc{scion-libp2p}, a path-aware P2P content overlay that bridges this gap. Our system applies SCION's philosophy of end-host path control at the libp2p relay layer, without requiring changes to the underlying IP network. The key insight is that even within an overlay network, path diversity exists through different relay chains, and this diversity can be exploited to improve content delivery performance.
+We present \textsc{scion-libp2p}, a path-aware P2P content overlay that bridges this gap. Our system is SCION-\emph{inspired} rather than SCION-\emph{integrated}: we borrow SCION's philosophy of end-host path control, multi-path awareness, and active path probing, but apply these principles at the libp2p overlay layer using standard TCP transport. Unlike systems that require native SCION infrastructure~\cite{gartner2025ipfs,btscion2023}, our approach is immediately deployable on any network. The key insight is that even within an overlay network, path diversity exists through different relay chains, and this diversity can be exploited to improve content delivery performance. This zero-infrastructure-requirement design makes SCION-style path intelligence accessible to existing P2P deployments.
 
 \paragraph{Contributions.}
 \begin{enumerate}
@@ -53,7 +53,7 @@ We present \textsc{scion-libp2p}, a path-aware P2P content overlay that bridges 
 
 \item NDN-style in-network relay caching combined with popularity-aware eviction that adapts to skewed content distributions, informed by Kangasharju et al.'s work on adaptive P2P caching~\cite{kangasharju2002caching}.
 
-\item An evaluation framework with three-way policy comparison showing that epsilon-greedy selection achieves significantly better tail latency than greedy min-RTT under contention while maintaining comparable median latency.
+\item An evaluation framework comparing five path selection strategies---epsilon-greedy, decaying-epsilon, UCB1, greedy min-RTT, and random---showing that epsilon-greedy achieves significantly better tail latency than greedy min-RTT under contention while maintaining comparable median latency.
 \end{enumerate}
 
 % =============================================================================
@@ -82,6 +82,11 @@ In path-aware networks, the herd effect occurs when all agents greedily select t
 \end{enumerate}
 
 Sch\"{u}rmann et al.~\cite{pathselection2025} formally analyze this problem and show that greedy path selection strategies produce oscillatory behavior and suboptimal aggregate throughput. They recommend randomized strategies that balance exploitation with exploration---exactly the approach our epsilon-greedy policy implements.
+
+\subsection{Problem Statement}
+\label{sec:problem}
+
+We formalize the path selection problem as follows. Given a set of $N$ peers connected via an overlay network with path diversity---each peer--peer pair has access to $K$ candidate paths (one direct, $K-1$ via relay chains)---and a content-addressed block $b$ available from providers $\mathcal{V} \subseteq \mathcal{P}$, select a path to a provider that minimizes retrieval latency. The constraint is that all peers make path selection decisions independently, with no global coordination. Under greedy optimization (each peer selects its lowest-latency path), the system converges to a Nash equilibrium where all agents share a single path, producing congestion that exceeds the latency of any individual path in isolation. This is the herd effect: the equilibrium is a degenerate outcome that is Pareto-dominated by strategies incorporating randomized exploration~\cite{pathselection2025}. Our epsilon-greedy policy breaks this symmetry at a bounded exploration cost of $O(1/\varepsilon)$ per selection, providing load distribution without explicit coordination. We additionally implement UCB1~\cite{auer2002bandit} and decaying-epsilon variants that offer asymptotically optimal regret and adaptive exploration rates, respectively.
 
 % =============================================================================
 \section{Design}
@@ -446,19 +451,45 @@ With replication & 5 (50\%) & 100.0\% \\
 
 With proactive replication, content remains \textbf{100\% available} even after killing 50\% of nodes (Table~\ref{tab:resilience}). Without replication, availability degrades proportionally to the fraction of killed nodes, as blocks stored only on failed nodes become unreachable.
 
+\subsection{Limitations}
+
+Our evaluation uses a controlled single-machine environment with localhost TCP. While this provides reproducible results and localhost TCP does exhibit contention under concurrent goroutines (as evidenced by the greedy policy's degradation), it does not capture WAN path heterogeneity, variable bandwidth, or real AS-level path diversity. The benchmark probe interval (30\,s) exceeds the benchmark duration ($\sim$2\,s), meaning the latency policy operates in a ``cold start'' scenario without probe data---a realistic condition for newly joined nodes, but one that amplifies the contrast between policies. Future work will deploy on SCIONLab~\cite{kwon2020scionlab} to evaluate under real multi-AS topologies with heterogeneous path characteristics.
+
 % =============================================================================
 \section{Related Work}
 \label{sec:related}
 
-\paragraph{Path-aware networking.} SCION~\cite{perrig2017scion} provides end-host path control at the network layer with cryptographic path validation. The SCION MPQUIC draft~\cite{scionmpquic} extends QUIC to use multiple SCION paths simultaneously, recommending disjoint path selection to avoid shared bottlenecks. SCIONLab~\cite{kwon2020scionlab} provides a testbed for SCION research. Our work applies SCION's path awareness philosophy to an overlay network without requiring SCION infrastructure.
+\paragraph{Path-aware networking.} SCION~\cite{perrig2017scion} provides end-host path control at the network layer with cryptographic path validation. The SCION MPQUIC draft~\cite{scionmpquic,zaeschke2024scionquic} extends QUIC to use multiple SCION paths simultaneously, recommending disjoint path selection to avoid shared bottlenecks---a recommendation our \textsc{DisjointPaths} algorithm directly implements. SCIONLab measurements~\cite{kwon2020scionlab,scionlabpaths2025} show average path lifetimes of approximately 8.6 hours, validating our 30-minute stale path timeout as conservative. Q-PARTS~\cite{qparts2024} introduces path-aware real-time transport scheduling for SCION, complementing our content-delivery focus. Our work applies SCION's path awareness philosophy to an overlay network without requiring SCION infrastructure.
 
-\paragraph{Named Data Networking.} NDN~\cite{jacobson2009networking,zhang2014ndn} pioneered in-network caching for content-addressed data, where routers cache data packets and serve subsequent requests from cache. Our relay caching directly mirrors this approach at the overlay level. Unlike NDN, which requires router-level changes, our caching operates entirely within the libp2p relay abstraction.
+\paragraph{SCION and content delivery.} Gartner et al.~\cite{gartner2025ipfs} integrate SCION natively into IPFS/Kubo, enabling content delivery over SCION QUIC transport. Their contribution is interoperability---demonstrating IPFS over SCION---but they do not address path selection intelligence or herd effects. The netsys-lab BitTorrent-over-SCION project~\cite{btscion2023} uses path-level peer associations, reporting up to 48\% throughput improvements from path diversity, but does not implement bandit-based exploration. While these systems require native SCION infrastructure, our approach applies SCION's path-awareness philosophy at the overlay level, enabling deployment on existing networks without infrastructure changes. Furthermore, no prior system applies multi-armed bandit exploration to P2P overlay path selection.
 
-\paragraph{Content-addressed P2P systems.} IPFS~\cite{benet2014ipfs} provides content-addressed storage and distribution over libp2p but is path-oblivious. BitTorrent~\cite{cohen2003incentives} uses tit-for-tat incentives but no path awareness. Neither system exploits path diversity for content delivery optimization.
+\paragraph{Named Data Networking.} NDN~\cite{jacobson2009networking,zhang2014ndn} pioneered in-network caching for content-addressed data, where routers cache data packets and serve subsequent requests from cache. Our relay caching directly mirrors this approach at the overlay level. Hop-by-hop overlay routing~\cite{hopoverlay2025} extends multipath content distribution to overlay networks, providing precedent for our approach. Unlike NDN, which requires router-level changes, our caching operates entirely within the libp2p relay abstraction.
+
+\paragraph{Content-addressed P2P systems.} IPFS~\cite{benet2014ipfs} provides content-addressed storage and distribution over libp2p but is path-oblivious. BitTorrent~\cite{cohen2003incentives} uses tit-for-tat incentives but no path awareness. Neither system exploits path diversity for content delivery optimization. Multipath QUIC head-of-line blocking analysis~\cite{changpeng2025mpquic} validates our choice of a custom block transfer protocol over standard Bitswap, which suffers from similar HoL issues under path heterogeneity.
 
 \paragraph{Overlay CDNs.} Overlay content distribution networks~\cite{pappas2006overlay} place caches at strategic overlay positions. Our popularity-aware caching draws on Kangasharju et al.'s~\cite{kangasharju2002caching} analysis of optimal cache placement in P2P systems, adapting their insights to a dynamic overlay topology.
 
-\paragraph{Multi-armed bandits.} The epsilon-greedy strategy is a classic approach to the exploration-exploitation tradeoff~\cite{robbins1952sequential,auer2002bandit}. UCB and Thompson sampling offer asymptotically optimal regret bounds, but epsilon-greedy's simplicity and constant-time selection make it practical for per-request path decisions where computational overhead matters.
+\paragraph{Multi-armed bandits in networking.} The epsilon-greedy strategy is a classic approach to the exploration-exploitation tradeoff~\cite{robbins1952sequential,auer2002bandit}. UCB1~\cite{auer2002bandit} and Thompson sampling~\cite{thompson1933likelihood} offer asymptotically optimal regret bounds. While MAB algorithms are well-studied in wireless channel selection and server load balancing, our work is the first to apply them to P2P overlay path selection. We implement three variants---fixed epsilon-greedy, decaying epsilon-greedy (converging from exploration to exploitation), and UCB1---enabling direct comparison of exploration strategies in the content delivery context.
+
+\paragraph{Comparison summary.} Table~\ref{tab:differentiation} positions our work against the most closely related systems.
+
+\begin{table}[t]
+\caption{Feature comparison with related SCION and P2P content systems.}
+\label{tab:differentiation}
+\centering
+\small
+\begin{tabular}{l@{\hspace{3pt}}c@{\hspace{3pt}}c@{\hspace{3pt}}c@{\hspace{3pt}}c}
+\toprule
+Feature & Ours & Gartner~\cite{gartner2025ipfs} & BT/SCION~\cite{btscion2023} & IPFS \\
+\midrule
+Path selection & MAB & Min-RTT & Disjoint & None \\
+Infrastructure & None & SCION & SCION & None \\
+Relay caching & NDN-style & No & No & Bitswap \\
+Popularity eviction & 2nd-chance & No & No & LRU \\
+Formal analysis & Herd effect & Perf. eval & Throughput & None \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % =============================================================================
 \section{Conclusion and Future Work}
@@ -468,11 +499,11 @@ We presented \textsc{scion-libp2p}, a path-aware P2P content overlay that applie
 
 \paragraph{Future work.} Several directions remain open:
 \begin{itemize}
-\item \textbf{SCION-native transport}: Deploy on SCIONLab~\cite{kwon2020scionlab} with real AS-level path diversity instead of overlay relay chains.
-\item \textbf{Adaptive exploration}: Replace fixed $\varepsilon$ with UCB1~\cite{auer2002bandit} or Thompson sampling for asymptotically optimal path exploration.
+\item \textbf{SCION-native transport}: Deploy on SCIONLab~\cite{kwon2020scionlab} with real AS-level path diversity instead of overlay relay chains. This is blocked on upstream go-multiaddr SCION codec support but would enable validation against Gartner et al.'s~\cite{gartner2025ipfs} native approach.
+\item \textbf{Thompson sampling}: While we have implemented UCB1 and decaying-epsilon variants, Thompson sampling~\cite{thompson1933likelihood} may offer better performance in non-stationary path environments through Bayesian posterior updates.
 \item \textbf{Post-quantum cryptography}: Replace Ed25519 manifest signatures with ML-DSA (FIPS 204) for quantum resilience.
-\item \textbf{Incentive mechanisms}: Add token-based resource accounting to prevent free-riding on relay and cache resources.
-\item \textbf{Large-scale evaluation}: Test at 100+ node scale on geographically distributed infrastructure to validate findings beyond single-machine experiments.
+\item \textbf{Incentive mechanisms}: Add token-based resource accounting to prevent free-riding on relay and cache resources, drawing on BitTorrent's tit-for-tat~\cite{cohen2003incentives} and Filecoin's proof-of-storage models.
+\item \textbf{Large-scale evaluation}: Test at 100+ node scale on SCIONLab or geographically distributed cloud infrastructure to validate findings beyond single-machine experiments, measuring Jain's fairness index~\cite{jain1984quantitative} for path load distribution.
 \end{itemize}
 
 \bibliographystyle{ACM-Reference-Format}

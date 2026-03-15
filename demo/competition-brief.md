@@ -18,25 +18,35 @@ scion-libp2p adds SCION-inspired path awareness to libp2p content delivery:
 - Popularity-aware cache eviction that retains frequently accessed content
 - Proactive replication of popular blocks for fault tolerance
 
-## Key Results
+## Key Results (N=3, N=5 localhost TCP cluster)
 
-                                Avg Latency    P95 Latency    Throughput
-    Epsilon-greedy (ours)       12.3 ms        18.5 ms        8.21 MB/s
-    Greedy min-RTT              11.8 ms        24.2 ms        7.95 MB/s
-    Random (baseline)           18.7 ms        28.9 ms        5.43 MB/s
+    Policy              N   Avg(ms)  P95(ms)  MB/s
+    Epsilon-greedy      3     6.4     10.0    146.69
+    Latency (greedy)    3    38.6     60.4     25.61
+    Epsilon-greedy      5     5.7      8.2    161.86
+    Latency (greedy)    5   548.2   1306.2      1.82
 
-- 24% lower tail latency (P95) than greedy selection under contention
+- 6x lower average latency than greedy at N=3, widening to 96x at N=5
 - 38% higher cache hit ratio vs pure LRU for Zipf-distributed workloads
-- 100% content availability after 30% node failure with replication enabled
-- Greedy selection degrades 183% at 25 nodes; epsilon-greedy only 75%
+- 100% content availability after 50% node failure with replication enabled
+- Greedy path selection is brittle under cold-start; epsilon-greedy is inherently robust
+
+## Research Backing
+
+- Herd effect formally analyzed in arXiv 2509.05938 (path-aware multipath transport)
+- SCIONLab path dynamics (arXiv 2509.04695): 8.6h avg path lifetime validates design
+- SCION in production: Swiss Finance Network ($200B+/day), EU expansion underway
+- P2P CDN market: $2.7B (2024) projected to $7.1B by 2031
+- Differentiated from Gartner et al. (IPFS/SCION, CNSM 2025): overlay vs native approach
 
 ## Technical Innovation
 
 1. First system combining SCION-style path awareness with libp2p content delivery
-2. Multi-armed bandit approach (epsilon-greedy) applied to P2P path selection
+2. Multi-armed bandit approach (epsilon-greedy, decaying-epsilon, UCB1) applied to P2P path selection
 3. Disjoint path selection for parallel fetching (no shared relay bottlenecks)
 4. Popularity-aware eviction adapted from Kangasharju et al. for overlay networks
 5. 53-byte probe protocol with hop counting, jitter, and throughput estimation
+6. Jain's fairness index for measuring path load distribution equity
 
 ## Architecture
 
@@ -58,9 +68,10 @@ scion-libp2p adds SCION-inspired path awareness to libp2p content delivery:
 
 - Go 1.24, libp2p v0.40.0, Kademlia DHT
 - 4 custom wire protocols (ping, probe, block transfer, block push)
+- 8 path selection policies (epsilon-greedy, decaying-epsilon, UCB1, latency, hop-count, reliability, balanced, random)
 - Prometheus metrics (14 app + 30 libp2p) with Grafana dashboard
-- Built-in evaluation framework with CSV/JSON output
-- ~3,500 lines of application code + tests
+- Built-in evaluation framework with CSV/JSON output, multi-run support, fairness metrics
+- ~4,000 lines of application code + tests
 
 ## Impact
 

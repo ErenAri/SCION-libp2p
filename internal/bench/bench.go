@@ -73,16 +73,18 @@ type ComparisonResult struct {
 
 // ComparisonEntry is one row in the comparison.
 type ComparisonEntry struct {
-	Policy       string  `json:"policy"`
-	Epsilon      float64 `json:"epsilon,omitempty"`
-	NodeCount    int     `json:"node_count"`
-	AvgLatencyMs float64 `json:"avg_latency_ms"`
-	P50LatencyMs float64 `json:"p50_latency_ms"`
-	P95LatencyMs float64 `json:"p95_latency_ms"`
-	P99LatencyMs float64 `json:"p99_latency_ms"`
+	Policy        string  `json:"policy"`
+	Epsilon       float64 `json:"epsilon,omitempty"`
+	NodeCount     int     `json:"node_count"`
+	AvgLatencyMs  float64 `json:"avg_latency_ms"`
+	P50LatencyMs  float64 `json:"p50_latency_ms"`
+	P95LatencyMs  float64 `json:"p95_latency_ms"`
+	P99LatencyMs  float64 `json:"p99_latency_ms"`
 	ThroughputMBs float64 `json:"throughput_mbs"`
 	CacheHitRatio float64 `json:"cache_hit_ratio"`
 	Availability  float64 `json:"availability"`
+	FairnessIndex float64 `json:"fairness_index"` // Jain's fairness index for path selection distribution
+	StddevLatMs   float64 `json:"stddev_lat_ms"`  // Standard deviation of avg latency across runs
 }
 
 // Run executes the full benchmark suite.
@@ -114,14 +116,26 @@ func Run(cfg Config) (*Results, error) {
 	return results, nil
 }
 
-// RunComparison runs the three-way policy comparison experiment.
-// Tests epsilon-greedy, latency, and random policies at the given node count.
+// RunComparison runs the policy comparison experiment.
+// Tests epsilon-greedy, decaying-epsilon, ucb1, latency, and random policies.
 func RunComparison(nodeCount, contentSize, requests, chunkSize int) (*ComparisonResult, error) {
+	return RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, 1)
+}
+
+// RunComparisonWithRuns runs the policy comparison with multiple runs per config.
+// Results are averaged with standard deviation reported.
+func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int) (*ComparisonResult, error) {
+	if runs < 1 {
+		runs = 1
+	}
+
 	policies := []struct {
 		name    string
 		epsilon float64
 	}{
 		{"epsilon-greedy", 0.1},
+		{"decaying-epsilon", 0},
+		{"ucb1", 0},
 		{"latency", 0},
 		{"random", 0},
 	}
@@ -129,20 +143,36 @@ func RunComparison(nodeCount, contentSize, requests, chunkSize int) (*Comparison
 	result := &ComparisonResult{}
 
 	for _, pol := range policies {
-		slog.Info("running comparison", "policy", pol.name, "nodes", nodeCount)
+		slog.Info("running comparison", "policy", pol.name, "nodes", nodeCount, "runs", runs)
 
-		cfg := Config{
-			NodeCount:   nodeCount,
-			ContentSize: contentSize,
-			Requests:    requests,
-			ChunkSize:   chunkSize,
-			Policy:      pol.name,
-			Epsilon:     pol.epsilon,
+		var avgLats, p50s, p95s, p99s, throughputs, cacheRatios, avails []float64
+
+		for r := 0; r < runs; r++ {
+			cfg := Config{
+				NodeCount:   nodeCount,
+				ContentSize: contentSize,
+				Requests:    requests,
+				ChunkSize:   chunkSize,
+				Policy:      pol.name,
+				Epsilon:     pol.epsilon,
+			}
+
+			res, err := Run(cfg)
+			if err != nil {
+				slog.Error("comparison run failed", "policy", pol.name, "run", r+1, "err", err)
+				continue
+			}
+
+			avgLats = append(avgLats, res.Latency.AvgLatencyMs)
+			p50s = append(p50s, res.Latency.P50LatencyMs)
+			p95s = append(p95s, res.Latency.P95LatencyMs)
+			p99s = append(p99s, res.Latency.P99LatencyMs)
+			throughputs = append(throughputs, res.Latency.ThroughputMBs)
+			cacheRatios = append(cacheRatios, res.CacheComparison.HitRatio)
+			avails = append(avails, res.Resilience.Availability)
 		}
 
-		res, err := Run(cfg)
-		if err != nil {
-			slog.Error("comparison run failed", "policy", pol.name, "err", err)
+		if len(avgLats) == 0 {
 			continue
 		}
 
@@ -150,13 +180,15 @@ func RunComparison(nodeCount, contentSize, requests, chunkSize int) (*Comparison
 			Policy:        pol.name,
 			Epsilon:       pol.epsilon,
 			NodeCount:     nodeCount,
-			AvgLatencyMs:  res.Latency.AvgLatencyMs,
-			P50LatencyMs:  res.Latency.P50LatencyMs,
-			P95LatencyMs:  res.Latency.P95LatencyMs,
-			P99LatencyMs:  res.Latency.P99LatencyMs,
-			ThroughputMBs: res.Latency.ThroughputMBs,
-			CacheHitRatio: res.CacheComparison.HitRatio,
-			Availability:  res.Resilience.Availability,
+			AvgLatencyMs:  mean(avgLats),
+			P50LatencyMs:  mean(p50s),
+			P95LatencyMs:  mean(p95s),
+			P99LatencyMs:  mean(p99s),
+			ThroughputMBs: mean(throughputs),
+			CacheHitRatio: mean(cacheRatios),
+			Availability:  mean(avails),
+			StddevLatMs:   stddev(avgLats),
+			FairnessIndex: jainFairness(avgLats),
 		}
 		result.Configs = append(result.Configs, entry)
 	}
@@ -165,12 +197,12 @@ func RunComparison(nodeCount, contentSize, requests, chunkSize int) (*Comparison
 }
 
 // RunScalability runs the comparison at multiple node counts.
-func RunScalability(nodeCounts []int, contentSize, requests, chunkSize int) (*ComparisonResult, error) {
+func RunScalability(nodeCounts []int, contentSize, requests, chunkSize, runs int) (*ComparisonResult, error) {
 	result := &ComparisonResult{}
 
 	for _, n := range nodeCounts {
 		slog.Info("scalability experiment", "nodes", n)
-		comp, err := RunComparison(n, contentSize, requests, chunkSize)
+		comp, err := RunComparisonWithRuns(n, contentSize, requests, chunkSize, runs)
 		if err != nil {
 			slog.Error("scalability run failed", "nodes", n, "err", err)
 			continue
@@ -206,6 +238,7 @@ func (r *ComparisonResult) WriteCSV(path string) error {
 		"policy", "epsilon", "node_count",
 		"avg_latency_ms", "p50_latency_ms", "p95_latency_ms", "p99_latency_ms",
 		"throughput_mbs", "cache_hit_ratio", "availability",
+		"fairness_index", "stddev_latency_ms",
 	})
 
 	for _, e := range r.Configs {
@@ -220,6 +253,8 @@ func (r *ComparisonResult) WriteCSV(path string) error {
 			strconv.FormatFloat(e.ThroughputMBs, 'f', 4, 64),
 			strconv.FormatFloat(e.CacheHitRatio, 'f', 4, 64),
 			strconv.FormatFloat(e.Availability, 'f', 4, 64),
+			strconv.FormatFloat(e.FairnessIndex, 'f', 4, 64),
+			strconv.FormatFloat(e.StddevLatMs, 'f', 2, 64),
 		})
 	}
 
@@ -432,8 +467,9 @@ func runResilienceBench(cfg Config) (*ResilienceResult, error) {
 
 func createBenchCluster(cfg Config) (*testutil.Cluster, func(), error) {
 	opts := testutil.ClusterOptions{
-		Policy:  cfg.Policy,
-		Epsilon: cfg.Epsilon,
+		Policy:      cfg.Policy,
+		Epsilon:     cfg.Epsilon,
+		DisableMDNS: true, // benchmarks connect nodes manually; mDNS causes shutdown races
 	}
 	cluster := testutil.NewClusterWithOptions(cfg.NodeCount, opts)
 	if cluster == nil {
@@ -493,4 +529,48 @@ func percentile(sorted []float64, p float64) float64 {
 	}
 	frac := idx - float64(lower)
 	return sorted[lower]*(1-frac) + sorted[upper]*frac
+}
+
+// mean computes the arithmetic mean of a float64 slice.
+func mean(vals []float64) float64 {
+	if len(vals) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, v := range vals {
+		sum += v
+	}
+	return sum / float64(len(vals))
+}
+
+// stddev computes the sample standard deviation.
+func stddev(vals []float64) float64 {
+	if len(vals) < 2 {
+		return 0
+	}
+	m := mean(vals)
+	var sumSq float64
+	for _, v := range vals {
+		d := v - m
+		sumSq += d * d
+	}
+	return math.Sqrt(sumSq / float64(len(vals)-1))
+}
+
+// jainFairness computes Jain's fairness index: J = (Σx)² / (n × Σx²).
+// Returns 1.0 for perfectly fair (all equal), 1/n for maximally unfair.
+func jainFairness(vals []float64) float64 {
+	if len(vals) == 0 {
+		return 0
+	}
+	var sum, sumSq float64
+	for _, v := range vals {
+		sum += v
+		sumSq += v * v
+	}
+	n := float64(len(vals))
+	if sumSq == 0 {
+		return 1.0
+	}
+	return (sum * sum) / (n * sumSq)
 }

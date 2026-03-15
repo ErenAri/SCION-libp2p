@@ -191,11 +191,174 @@ func PolicyFromNameWithEpsilon(name string, epsilon float64) (Policy, error) {
 			Epsilon:  epsilon,
 			Delegate: DefaultBalancedPolicy(),
 		}, nil
+	case "decaying-epsilon":
+		return DefaultDecayingEpsilonGreedyPolicy(), nil
+	case "ucb1":
+		return DefaultUCB1Policy(), nil
 	case "random":
 		return RandomPolicy{}, nil
 	default:
-		return nil, fmt.Errorf("unknown policy: %q (valid: latency, hop-count, reliability, balanced, epsilon-greedy, random)", name)
+		return nil, fmt.Errorf("unknown policy: %q (valid: latency, hop-count, reliability, balanced, epsilon-greedy, decaying-epsilon, ucb1, random)", name)
 	}
+}
+
+// DecayingEpsilonGreedyPolicy uses a decaying exploration rate that starts
+// high (ε₀) and decays toward a minimum (ε_min) over time. This provides
+// more exploration early (when path quality is uncertain) and converges
+// toward exploitation as confidence grows.
+//
+// Formula: ε(t) = max(ε_min, ε₀ × decay^t)
+// where t is the number of selections made.
+type DecayingEpsilonGreedyPolicy struct {
+	EpsilonStart float64 // initial exploration rate (default: 0.3)
+	EpsilonMin   float64 // minimum exploration rate (default: 0.05)
+	DecayRate    float64 // decay multiplier per selection (default: 0.995)
+	Delegate     Policy  // scoring policy for exploitation
+
+	selections uint64 // number of selections made (for decay)
+}
+
+// DefaultDecayingEpsilonGreedyPolicy returns a DecayingEpsilonGreedyPolicy
+// with sensible defaults: ε starts at 0.3, decays to 0.05 with rate 0.995.
+func DefaultDecayingEpsilonGreedyPolicy() *DecayingEpsilonGreedyPolicy {
+	return &DecayingEpsilonGreedyPolicy{
+		EpsilonStart: 0.3,
+		EpsilonMin:   0.05,
+		DecayRate:    0.995,
+		Delegate:     DefaultBalancedPolicy(),
+	}
+}
+
+func (d *DecayingEpsilonGreedyPolicy) Name() string { return "decaying-epsilon" }
+
+func (d *DecayingEpsilonGreedyPolicy) Score(p *Path) float64 {
+	return d.Delegate.Score(p)
+}
+
+// CurrentEpsilon returns the current exploration rate after decay.
+func (d *DecayingEpsilonGreedyPolicy) CurrentEpsilon() float64 {
+	eps := d.EpsilonStart * math.Pow(d.DecayRate, float64(d.selections))
+	if eps < d.EpsilonMin {
+		return d.EpsilonMin
+	}
+	return eps
+}
+
+// SelectPath picks a path using decaying epsilon-greedy strategy.
+func (d *DecayingEpsilonGreedyPolicy) SelectPath(paths []*Path) *Path {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	d.selections++
+	epsilon := d.CurrentEpsilon()
+
+	// Filter to viable paths.
+	viable := make([]*Path, 0, len(paths))
+	for _, p := range paths {
+		if p.Metrics.SampleCount > 0 {
+			viable = append(viable, p)
+		}
+	}
+	if len(viable) == 0 {
+		return paths[0]
+	}
+
+	// Explore with current epsilon.
+	if len(viable) > 1 && rand.Float64() < epsilon {
+		return viable[rand.IntN(len(viable))]
+	}
+
+	// Exploit: pick best-scored path.
+	var best *Path
+	bestScore := -1.0
+	for _, p := range viable {
+		score := d.Delegate.Score(p)
+		if score > bestScore {
+			bestScore = score
+			best = p
+		}
+	}
+	return best
+}
+
+// UCB1Policy implements the Upper Confidence Bound (UCB1) algorithm for
+// path selection. UCB1 provides asymptotically optimal regret bounds,
+// automatically balancing exploration and exploitation without a tunable
+// epsilon parameter.
+//
+// UCB1 score: delegate_score(i) + c * sqrt(ln(N) / n_i)
+// where N = total selections, n_i = selections for path i, c = exploration constant.
+type UCB1Policy struct {
+	C        float64 // exploration constant (default: sqrt(2) ≈ 1.414)
+	Delegate Policy  // base scoring policy
+
+	totalSelections uint64
+	pathSelections  map[string]uint64
+}
+
+// DefaultUCB1Policy returns a UCB1Policy with default exploration constant sqrt(2).
+func DefaultUCB1Policy() *UCB1Policy {
+	return &UCB1Policy{
+		C:              math.Sqrt(2),
+		Delegate:       DefaultBalancedPolicy(),
+		pathSelections: make(map[string]uint64),
+	}
+}
+
+func (u *UCB1Policy) Name() string { return "ucb1" }
+
+func (u *UCB1Policy) Score(p *Path) float64 {
+	return u.Delegate.Score(p)
+}
+
+// SelectPath picks a path using the UCB1 algorithm.
+func (u *UCB1Policy) SelectPath(paths []*Path) *Path {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	// Filter to viable paths.
+	viable := make([]*Path, 0, len(paths))
+	for _, p := range paths {
+		if p.Metrics.SampleCount > 0 {
+			viable = append(viable, p)
+		}
+	}
+	if len(viable) == 0 {
+		return paths[0]
+	}
+
+	u.totalSelections++
+
+	// First, select any path that hasn't been tried yet (infinite UCB score).
+	for _, p := range viable {
+		if u.pathSelections[p.ID] == 0 {
+			u.pathSelections[p.ID] = 1
+			return p
+		}
+	}
+
+	// Compute UCB1 score for each path.
+	var best *Path
+	bestUCB := -1.0
+	logN := math.Log(float64(u.totalSelections))
+
+	for _, p := range viable {
+		ni := float64(u.pathSelections[p.ID])
+		delegateScore := u.Delegate.Score(p)
+		ucbScore := delegateScore + u.C*math.Sqrt(logN/ni)
+
+		if ucbScore > bestUCB {
+			bestUCB = ucbScore
+			best = p
+		}
+	}
+
+	if best != nil {
+		u.pathSelections[best.ID]++
+	}
+	return best
 }
 
 // RandomPolicy selects paths uniformly at random (baseline for evaluation).

@@ -189,6 +189,63 @@
           "refId": "B"
         }
       ]
+    },
+    {
+      "title": "Relay Peers Available",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "scion_libp2p_relay_peers_available",
+          "legendFormat": "relays",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "libp2p Connections (opened/closed)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 10, "x": 4, "y": 22 },
+      "targets": [
+        {
+          "expr": "rate(libp2p_swarm_connections_opened_total[1m])",
+          "legendFormat": "opened/s {{dir}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(libp2p_swarm_connections_closed_total[1m])",
+          "legendFormat": "closed/s {{dir}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "libp2p Streams",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 10, "x": 14, "y": 22 },
+      "targets": [
+        {
+          "expr": "rate(libp2p_swarm_streams_opened_total[1m])",
+          "legendFormat": "opened/s {{dir}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(libp2p_swarm_streams_closed_total[1m])",
+          "legendFormat": "closed/s {{dir}}",
+          "refId": "B"
+        }
+      ]
     }
   ],
   "refresh": "5s",

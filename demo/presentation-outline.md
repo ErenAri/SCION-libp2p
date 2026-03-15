@@ -45,17 +45,18 @@ in-network caching. No configuration needed."
 
 Title: "Epsilon-Greedy Beats Greedy Under Load"
 
-Bar chart comparing P95 latency:
-- Epsilon-greedy: 18.5 ms
-- Greedy min-RTT: 24.2 ms (30% worse)
-- Random: 28.9 ms (56% worse)
+Bar chart comparing P95 latency (N=5):
+- Epsilon-greedy: 8.2 ms
+- Greedy min-RTT: 1,306 ms (159x worse)
+- Random: baseline
 
 Line graph showing scalability:
-- Greedy degrades 183% at 25 nodes
-- Epsilon-greedy degrades only 75%
+- Greedy P95 jumps from 60ms to 1,306ms (N=3 to N=5)
+- Epsilon-greedy stays stable at ~8-10ms
 
-Talking point: "The slightly higher average latency is the cost of
-exploration. The dramatically lower tail latency is the payoff."
+Talking point: "Greedy path selection is brittle -- it collapses when
+probe data is stale. Epsilon-greedy's exploration provides inherent
+robustness, even in cold-start scenarios."
 
 ## Slide 5: What Makes This Different (20 seconds)
 

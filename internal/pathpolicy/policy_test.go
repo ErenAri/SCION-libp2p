@@ -318,6 +318,133 @@ func TestEpsilonGreedySelectPathEmpty(t *testing.T) {
 	}
 }
 
+func TestDecayingEpsilonGreedyPolicy(t *testing.T) {
+	pol := pathpolicy.DefaultDecayingEpsilonGreedyPolicy()
+
+	if pol.Name() != "decaying-epsilon" {
+		t.Errorf("expected name 'decaying-epsilon', got %q", pol.Name())
+	}
+
+	// Initial epsilon should be near EpsilonStart (0.3).
+	if eps := pol.CurrentEpsilon(); eps < 0.29 || eps > 0.31 {
+		t.Errorf("expected initial epsilon ~0.3, got %f", eps)
+	}
+
+	fast := &pathpolicy.Path{
+		ID:   "fast",
+		Type: pathpolicy.PathDirect,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      2 * time.Millisecond,
+			HopCount:    0,
+			SuccessRate: 0.99,
+			SampleCount: 20,
+		},
+	}
+	slow := &pathpolicy.Path{
+		ID:   "slow",
+		Type: pathpolicy.PathRelay,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      200 * time.Millisecond,
+			HopCount:    2,
+			SuccessRate: 0.8,
+			SampleCount: 20,
+		},
+	}
+
+	paths := []*pathpolicy.Path{fast, slow}
+
+	// Make many selections -- epsilon should decay.
+	for i := 0; i < 500; i++ {
+		selected := pol.SelectPath(paths)
+		if selected == nil {
+			t.Fatal("SelectPath returned nil")
+		}
+	}
+
+	// After 500 selections, epsilon should have decayed significantly.
+	eps := pol.CurrentEpsilon()
+	if eps > 0.1 {
+		t.Errorf("expected decayed epsilon < 0.1 after 500 selections, got %f", eps)
+	}
+	if eps < pol.EpsilonMin {
+		t.Errorf("epsilon %f should not be below minimum %f", eps, pol.EpsilonMin)
+	}
+}
+
+func TestUCB1Policy(t *testing.T) {
+	pol := pathpolicy.DefaultUCB1Policy()
+
+	if pol.Name() != "ucb1" {
+		t.Errorf("expected name 'ucb1', got %q", pol.Name())
+	}
+
+	fast := &pathpolicy.Path{
+		ID:   "fast",
+		Type: pathpolicy.PathDirect,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      2 * time.Millisecond,
+			HopCount:    0,
+			SuccessRate: 0.99,
+			SampleCount: 20,
+		},
+	}
+	slow := &pathpolicy.Path{
+		ID:   "slow",
+		Type: pathpolicy.PathRelay,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      200 * time.Millisecond,
+			HopCount:    2,
+			SuccessRate: 0.8,
+			SampleCount: 20,
+		},
+	}
+
+	paths := []*pathpolicy.Path{fast, slow}
+
+	// UCB1 should first try each path once, then mostly exploit "fast".
+	fastCount := 0
+	slowCount := 0
+	n := 1000
+
+	for i := 0; i < n; i++ {
+		selected := pol.SelectPath(paths)
+		if selected == nil {
+			t.Fatal("SelectPath returned nil")
+		}
+		switch selected.ID {
+		case "fast":
+			fastCount++
+		case "slow":
+			slowCount++
+		}
+	}
+
+	// UCB1 should predominantly select the fast path but still explore slow.
+	fastRatio := float64(fastCount) / float64(n)
+	if fastRatio < 0.7 {
+		t.Errorf("expected UCB1 to favor fast path (got %.1f%% fast, %.1f%% slow)",
+			fastRatio*100, float64(slowCount)/float64(n)*100)
+	}
+	if slowCount == 0 {
+		t.Error("UCB1 never explored the slow path")
+	}
+
+	t.Logf("UCB1 distribution: fast=%.1f%% slow=%.1f%% (n=%d)",
+		fastRatio*100, float64(slowCount)/float64(n)*100, n)
+}
+
+func TestPolicyFromNameNewPolicies(t *testing.T) {
+	for _, name := range []string{"decaying-epsilon", "ucb1"} {
+		p, err := pathpolicy.PolicyFromName(name)
+		if err != nil {
+			t.Errorf("PolicyFromName(%q): unexpected error: %v", name, err)
+		}
+		if p == nil {
+			t.Errorf("PolicyFromName(%q): expected non-nil policy", name)
+		}
+	}
+}
+
 func TestEpsilonGreedySelectPathSingle(t *testing.T) {
 	pol := pathpolicy.DefaultEpsilonGreedyPolicy()
 
