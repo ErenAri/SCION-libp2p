@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/erena/scion-libp2p/internal/bench"
@@ -23,16 +24,17 @@ Experiments:
 }
 
 var (
-	benchNodes       int
-	benchContentSize int
-	benchRequests    int
-	benchChunkSize   int
-	benchPolicy      string
-	benchEpsilon     float64
-	benchExperiment  string
-	benchOutputJSON  string
-	benchOutputCSV   string
-	benchRuns        int
+	benchNodes          int
+	benchContentSize    int
+	benchRequests       int
+	benchChunkSize      int
+	benchPolicy         string
+	benchEpsilon        float64
+	benchExperiment     string
+	benchOutputJSON     string
+	benchOutputCSV      string
+	benchRuns           int
+	benchTimeSeriesDir  string
 )
 
 func init() {
@@ -46,6 +48,7 @@ func init() {
 	benchCmd.Flags().StringVar(&benchOutputJSON, "output-json", "", "output JSON results to file")
 	benchCmd.Flags().StringVar(&benchOutputCSV, "output-csv", "", "output CSV results to file")
 	benchCmd.Flags().IntVar(&benchRuns, "runs", 1, "number of runs per configuration (results averaged)")
+	benchCmd.Flags().StringVar(&benchTimeSeriesDir, "output-timeseries", "", "directory for per-request convergence time series CSVs")
 
 	rootCmd.AddCommand(benchCmd)
 }
@@ -64,13 +67,18 @@ func runBench(cmd *cobra.Command, args []string) error {
 }
 
 func runSingleBench() error {
+	if benchTimeSeriesDir != "" {
+		os.MkdirAll(benchTimeSeriesDir, 0o755)
+	}
+
 	cfg := bench.Config{
-		NodeCount:   benchNodes,
-		ContentSize: benchContentSize,
-		Requests:    benchRequests,
-		ChunkSize:   benchChunkSize,
-		Policy:      benchPolicy,
-		Epsilon:     benchEpsilon,
+		NodeCount:     benchNodes,
+		ContentSize:   benchContentSize,
+		Requests:      benchRequests,
+		ChunkSize:     benchChunkSize,
+		Policy:        benchPolicy,
+		Epsilon:       benchEpsilon,
+		TimeSeriesDir: benchTimeSeriesDir,
 	}
 
 	results, err := bench.Run(cfg)
@@ -109,7 +117,11 @@ func runSingleBench() error {
 func runCompareBench() error {
 	slog.Info("running policy comparison", "nodes", benchNodes, "runs", benchRuns)
 
-	results, err := bench.RunComparisonWithRuns(benchNodes, benchContentSize, benchRequests, benchChunkSize, benchRuns)
+	if benchTimeSeriesDir != "" {
+		os.MkdirAll(benchTimeSeriesDir, 0o755)
+	}
+
+	results, err := bench.RunComparisonWithRuns(benchNodes, benchContentSize, benchRequests, benchChunkSize, benchRuns, benchTimeSeriesDir)
 	if err != nil {
 		return fmt.Errorf("comparison failed: %w", err)
 	}
@@ -136,7 +148,11 @@ func runScalabilityBench() error {
 	nodeCounts := []int{5, 10, 25}
 	slog.Info("running scalability experiment", "node_counts", nodeCounts)
 
-	results, err := bench.RunScalability(nodeCounts, benchContentSize, benchRequests, benchChunkSize, benchRuns)
+	if benchTimeSeriesDir != "" {
+		os.MkdirAll(benchTimeSeriesDir, 0o755)
+	}
+
+	results, err := bench.RunScalability(nodeCounts, benchContentSize, benchRequests, benchChunkSize, benchRuns, benchTimeSeriesDir)
 	if err != nil {
 		return fmt.Errorf("scalability experiment failed: %w", err)
 	}

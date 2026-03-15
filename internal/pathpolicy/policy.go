@@ -6,6 +6,9 @@ import (
 	"math/rand/v2"
 	"strings"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // Policy defines how paths are scored for selection.
@@ -197,8 +200,12 @@ func PolicyFromNameWithEpsilon(name string, epsilon float64) (Policy, error) {
 		return DefaultUCB1Policy(), nil
 	case "random":
 		return RandomPolicy{}, nil
+	case "thompson":
+		return DefaultThompsonSamplingPolicy(), nil
+	case "contextual":
+		return DefaultContextualBanditPolicy(), nil
 	default:
-		return nil, fmt.Errorf("unknown policy: %q (valid: latency, hop-count, reliability, balanced, epsilon-greedy, decaying-epsilon, ucb1, random)", name)
+		return nil, fmt.Errorf("unknown policy: %q (valid: latency, hop-count, reliability, balanced, epsilon-greedy, decaying-epsilon, ucb1, random, thompson, contextual)", name)
 	}
 }
 
@@ -371,4 +378,278 @@ func (RandomPolicy) Score(p *Path) float64 {
 		return 0
 	}
 	return rand.Float64()
+}
+
+// ThompsonSamplingPolicy implements Bayesian path selection using Thompson
+// Sampling with Beta-distributed priors. Each path maintains alpha (success)
+// and beta (failure) counts. On each selection, a sample is drawn from
+// Beta(alpha, beta) for each path, and the path with the highest sample
+// is chosen. This provides natural exploration-exploitation balance without
+// a tunable epsilon parameter.
+//
+// Reference: "Thompson Sampling for Complex Online Problems" (Russo et al., 2018)
+type ThompsonSamplingPolicy struct {
+	Delegate Policy
+	alpha    map[string]float64 // per-path success count (Beta prior)
+	beta     map[string]float64 // per-path failure count (Beta prior)
+}
+
+// DefaultThompsonSamplingPolicy returns a ThompsonSamplingPolicy with
+// uniform Beta(1,1) priors and a BalancedPolicy delegate.
+func DefaultThompsonSamplingPolicy() *ThompsonSamplingPolicy {
+	return &ThompsonSamplingPolicy{
+		Delegate: DefaultBalancedPolicy(),
+		alpha:    make(map[string]float64),
+		beta:     make(map[string]float64),
+	}
+}
+
+func (t *ThompsonSamplingPolicy) Name() string { return "thompson" }
+
+func (t *ThompsonSamplingPolicy) Score(p *Path) float64 {
+	return t.Delegate.Score(p)
+}
+
+// SelectPath picks a path using Thompson Sampling. For each path, it draws
+// a sample from Beta(alpha, beta) and selects the path with the highest
+// sample. After selection, updates alpha/beta based on whether the path's
+// quality score is above or below the mean (Bernoulli reward model).
+func (t *ThompsonSamplingPolicy) SelectPath(paths []*Path) *Path {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	// Filter to viable paths (at least one probe sample).
+	viable := make([]*Path, 0, len(paths))
+	for _, p := range paths {
+		if p.Metrics.SampleCount > 0 {
+			viable = append(viable, p)
+		}
+	}
+	if len(viable) == 0 {
+		return paths[0]
+	}
+
+	// Initialize uniform priors for unseen paths.
+	for _, p := range viable {
+		if _, ok := t.alpha[p.ID]; !ok {
+			t.alpha[p.ID] = 1.0
+			t.beta[p.ID] = 1.0
+		}
+	}
+
+	// Sample from Beta(alpha, beta) for each path and pick the highest.
+	var best *Path
+	bestSample := -1.0
+	for _, p := range viable {
+		sample := distuv.Beta{Alpha: t.alpha[p.ID], Beta: t.beta[p.ID]}.Rand()
+		if sample > bestSample {
+			bestSample = sample
+			best = p
+		}
+	}
+
+	// Update alpha/beta for the selected path using Bernoulli reward:
+	// reward = 1 if path's delegate score >= mean score, else 0.
+	if best != nil {
+		var sumScore float64
+		for _, p := range viable {
+			sumScore += t.Delegate.Score(p)
+		}
+		meanScore := sumScore / float64(len(viable))
+
+		if t.Delegate.Score(best) >= meanScore {
+			t.alpha[best.ID]++
+		} else {
+			t.beta[best.ID]++
+		}
+
+		// Decay to prevent unbounded growth — effective sliding window.
+		total := t.alpha[best.ID] + t.beta[best.ID]
+		if total > 100 {
+			t.alpha[best.ID] *= 0.95
+			t.beta[best.ID] *= 0.95
+		}
+	}
+
+	return best
+}
+
+// contextDim is the number of features in the LinUCB context vector.
+const contextDim = 5
+
+// PathContext captures observable state at path selection time.
+type PathContext struct {
+	PeerCount     int     // number of connected peers
+	ContentSizeKB int     // content size in KB
+	HourOfDay     int     // 0-23
+	AvgNetworkRTT float64 // average RTT across all paths (ms)
+}
+
+// featureVector normalizes PathContext into a fixed-size feature vector
+// suitable for LinUCB. All features are scaled to [0,1] with a bias term.
+func (c PathContext) featureVector() *mat.VecDense {
+	return mat.NewVecDense(contextDim, []float64{
+		float64(c.PeerCount) / 100.0,    // normalized peer count
+		float64(c.ContentSizeKB) / 1024, // normalized content size (MB)
+		float64(c.HourOfDay) / 24.0,     // normalized hour
+		c.AvgNetworkRTT / 1000.0,        // normalized RTT (seconds)
+		1.0,                             // bias term
+	})
+}
+
+// ContextualBanditPolicy implements LinUCB for contextual path selection.
+// Unlike stateless bandits, it conditions path selection on observable context
+// (peer count, content size, time of day, network RTT), enabling faster
+// adaptation to non-stationary environments.
+//
+// Reference: "A Contextual-Bandit Approach to Personalized News Article
+// Recommendation" (Li et al., WWW 2010)
+type ContextualBanditPolicy struct {
+	Delegate Policy
+	Alpha    float64 // exploration parameter (default: 1.0)
+
+	// Per-path LinUCB state: A matrix (d×d) and b vector (d×1).
+	pathA map[string]*mat.Dense
+	pathB map[string]*mat.VecDense
+}
+
+// DefaultContextualBanditPolicy returns a ContextualBanditPolicy with
+// alpha=1.0 and a BalancedPolicy delegate.
+func DefaultContextualBanditPolicy() *ContextualBanditPolicy {
+	return &ContextualBanditPolicy{
+		Delegate: DefaultBalancedPolicy(),
+		Alpha:    1.0,
+		pathA:    make(map[string]*mat.Dense),
+		pathB:    make(map[string]*mat.VecDense),
+	}
+}
+
+func (cb *ContextualBanditPolicy) Name() string { return "contextual" }
+
+func (cb *ContextualBanditPolicy) Score(p *Path) float64 {
+	return cb.Delegate.Score(p)
+}
+
+func (cb *ContextualBanditPolicy) initPath(id string) {
+	if _, ok := cb.pathA[id]; !ok {
+		cb.pathA[id] = mat.NewDense(contextDim, contextDim, nil)
+		for i := 0; i < contextDim; i++ {
+			cb.pathA[id].Set(i, i, 1.0) // identity matrix
+		}
+		cb.pathB[id] = mat.NewVecDense(contextDim, nil)
+	}
+}
+
+// SelectPathWithContext picks a path using LinUCB with the given context.
+// For each path: UCB = θᵀx + α√(xᵀA⁻¹x), where θ = A⁻¹b.
+func (cb *ContextualBanditPolicy) SelectPathWithContext(paths []*Path, pctx PathContext) *Path {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	viable := make([]*Path, 0, len(paths))
+	for _, p := range paths {
+		if p.Metrics.SampleCount > 0 {
+			viable = append(viable, p)
+		}
+	}
+	if len(viable) == 0 {
+		return paths[0]
+	}
+
+	x := pctx.featureVector()
+
+	var best *Path
+	bestUCB := math.Inf(-1)
+
+	for _, p := range viable {
+		cb.initPath(p.ID)
+
+		// Compute A⁻¹.
+		var aInv mat.Dense
+		if err := aInv.Inverse(cb.pathA[p.ID]); err != nil {
+			// If matrix is singular, use identity (fresh start).
+			aInv = *mat.NewDense(contextDim, contextDim, nil)
+			for i := 0; i < contextDim; i++ {
+				aInv.Set(i, i, 1.0)
+			}
+		}
+
+		// θ = A⁻¹b
+		var theta mat.VecDense
+		theta.MulVec(&aInv, cb.pathB[p.ID])
+
+		// UCB = θᵀx + α√(xᵀA⁻¹x)
+		predicted := mat.Dot(&theta, x)
+
+		var tmp mat.VecDense
+		tmp.MulVec(&aInv, x)
+		uncertainty := math.Sqrt(math.Abs(mat.Dot(x, &tmp)))
+
+		ucb := predicted + cb.Alpha*uncertainty
+
+		if ucb > bestUCB {
+			bestUCB = ucb
+			best = p
+		}
+	}
+
+	return best
+}
+
+// UpdateContext updates LinUCB model for the selected path after observing reward.
+func (cb *ContextualBanditPolicy) UpdateContext(pathID string, pctx PathContext, reward float64) {
+	cb.initPath(pathID)
+	x := pctx.featureVector()
+
+	// A = A + xxᵀ
+	var xxT mat.Dense
+	xxT.Outer(1.0, x, x)
+	cb.pathA[pathID].Add(cb.pathA[pathID], &xxT)
+
+	// b = b + r*x
+	var rx mat.VecDense
+	rx.ScaleVec(reward, x)
+	cb.pathB[pathID].AddVec(cb.pathB[pathID], &rx)
+}
+
+// SelectPath provides a stateless fallback (uses default context).
+func (cb *ContextualBanditPolicy) SelectPath(paths []*Path) *Path {
+	// Build context from path metrics.
+	pctx := PathContext{
+		PeerCount: len(paths),
+		HourOfDay: time.Now().Hour(),
+	}
+	var totalRTT float64
+	count := 0
+	for _, p := range paths {
+		if p.Metrics.AvgRTT > 0 {
+			totalRTT += float64(p.Metrics.AvgRTT.Milliseconds())
+			count++
+		}
+	}
+	if count > 0 {
+		pctx.AvgNetworkRTT = totalRTT / float64(count)
+	}
+
+	best := cb.SelectPathWithContext(paths, pctx)
+
+	// Auto-update: use delegate score as reward signal.
+	if best != nil {
+		var sumScore float64
+		for _, p := range paths {
+			if p.Metrics.SampleCount > 0 {
+				sumScore += cb.Delegate.Score(p)
+			}
+		}
+		meanScore := sumScore / float64(max(len(paths), 1))
+		reward := 0.0
+		if cb.Delegate.Score(best) >= meanScore {
+			reward = 1.0
+		}
+		cb.UpdateContext(best.ID, pctx, reward)
+	}
+
+	return best
 }

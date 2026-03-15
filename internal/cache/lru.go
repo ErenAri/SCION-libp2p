@@ -213,3 +213,14 @@ func (c *LRUCache) Len() int {
 	defer c.mu.Unlock()
 	return c.eviction.Len()
 }
+
+// CIDs returns all cached block CIDs (for Bloom filter construction).
+func (c *LRUCache) CIDs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cids := make([]string, 0, len(c.items))
+	for cid := range c.items {
+		cids = append(cids, cid)
+	}
+	return cids
+}

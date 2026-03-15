@@ -1,0 +1,125 @@
+# WAN Simulation: 5 nodes with heterogeneous latency profiles.
+# Each node simulates a different network region using tc netem.
+#
+# Topology:
+#   node1 (publisher)  - no added latency (local region)
+#   node2              - 5ms latency (same region, nearby)
+#   node3              - 50ms, 1% loss (different region)
+#   node4 (relay)      - 20ms (intermediate region)
+#   node5              - 100ms, 2% loss (distant region)
+#
+# Usage:
+#   docker compose -f docker/docker-compose.wan.yml build
+#   docker compose -f docker/docker-compose.wan.yml up
+#   # In another terminal:
+#   bash docker/run-benchmark.sh
+
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: scion-node1
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_NAME=publisher
+    command: >
+      --listen /ip4/0.0.0.0/tcp/9000
+      --api 0.0.0.0:9090
+      --policy epsilon-greedy
+    ports:
+      - "9090:9090"
+    networks:
+      - scion-wan
+
+  node2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: scion-node2
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_NAME=nearby
+      - LATENCY_MS=5
+      - JITTER_MS=1
+    command: >
+      --listen /ip4/0.0.0.0/tcp/9000
+      --api 0.0.0.0:9090
+      --bootstrap /dns4/node1/tcp/9000
+      --policy epsilon-greedy
+    depends_on:
+      - node1
+    networks:
+      - scion-wan
+
+  node3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: scion-node3
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_NAME=remote
+      - LATENCY_MS=50
+      - LOSS_PCT=1
+      - JITTER_MS=10
+    command: >
+      --listen /ip4/0.0.0.0/tcp/9000
+      --api 0.0.0.0:9090
+      --bootstrap /dns4/node1/tcp/9000
+      --policy epsilon-greedy
+    depends_on:
+      - node1
+    networks:
+      - scion-wan
+
+  node4:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: scion-node4
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_NAME=relay
+      - LATENCY_MS=20
+      - JITTER_MS=5
+    command: >
+      --listen /ip4/0.0.0.0/tcp/9000
+      --api 0.0.0.0:9090
+      --bootstrap /dns4/node1/tcp/9000
+      --policy epsilon-greedy
+      --relay
+    depends_on:
+      - node1
+    networks:
+      - scion-wan
+
+  node5:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: scion-node5
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_NAME=distant
+      - LATENCY_MS=100
+      - LOSS_PCT=2
+      - JITTER_MS=20
+    command: >
+      --listen /ip4/0.0.0.0/tcp/9000
+      --api 0.0.0.0:9090
+      --bootstrap /dns4/node1/tcp/9000
+      --policy epsilon-greedy
+    depends_on:
+      - node1
+    networks:
+      - scion-wan
+
+networks:
+  scion-wan:
+    driver: bridge

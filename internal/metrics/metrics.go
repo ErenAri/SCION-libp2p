@@ -29,6 +29,11 @@ type Metrics struct {
 	PathSelectionsTotal *prometheus.CounterVec // by path_type: "direct", "relay"
 	StalePaths          prometheus.Counter
 	BlocksReplicated    prometheus.Counter
+
+	// Erasure coding metrics.
+	ErasureEncodeSeconds prometheus.Histogram
+	ErasureDecodeSeconds prometheus.Histogram
+	FragmentsStored      prometheus.Counter
 }
 
 // New creates and registers all Prometheus metrics in a fresh per-node registry.
@@ -110,6 +115,23 @@ func New() *Metrics {
 			Name:      "blocks_replicated_total",
 			Help:      "Total blocks replicated to peers.",
 		}),
+		ErasureEncodeSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "scion_libp2p",
+			Name:      "erasure_encode_seconds",
+			Help:      "Time to erasure-encode a block into fragments.",
+			Buckets:   prometheus.ExponentialBuckets(0.0001, 2, 10),
+		}),
+		ErasureDecodeSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "scion_libp2p",
+			Name:      "erasure_decode_seconds",
+			Help:      "Time to reconstruct a block from erasure-coded fragments.",
+			Buckets:   prometheus.ExponentialBuckets(0.0001, 2, 10),
+		}),
+		FragmentsStored: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "scion_libp2p",
+			Name:      "fragments_stored_total",
+			Help:      "Total erasure-coded fragments stored.",
+		}),
 	}
 
 	reg.MustRegister(
@@ -127,6 +149,9 @@ func New() *Metrics {
 		m.PathSelectionsTotal,
 		m.StalePaths,
 		m.BlocksReplicated,
+		m.ErasureEncodeSeconds,
+		m.ErasureDecodeSeconds,
+		m.FragmentsStored,
 	)
 
 	return m

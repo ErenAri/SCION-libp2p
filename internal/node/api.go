@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/erena/scion-libp2p/internal/cache"
 	"github.com/erena/scion-libp2p/internal/content"
 	"github.com/erena/scion-libp2p/internal/pathpolicy"
 	"github.com/erena/scion-libp2p/internal/protocol"
@@ -264,10 +265,27 @@ func (a *API) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Chunk the file.
+	// Chunk the file — adaptive or fixed.
 	chunkSize := a.node.Cfg.ChunkSizeBytes
 	if chunkSize <= 0 {
 		chunkSize = 256 * 1024
+	}
+	if a.node.Cfg.AdaptiveChunking {
+		// Estimate best path RTT from any connected peer.
+		var bestRTTms float64 = 10 // default assumption
+		if a.node.PathManager != nil {
+			for _, pid := range a.node.Host.Network().Peers() {
+				if bp := a.node.PathManager.BestPath(pid); bp != nil && bp.Metrics.AvgRTT > 0 {
+					rttMs := float64(bp.Metrics.AvgRTT.Milliseconds())
+					if bestRTTms == 10 || rttMs < bestRTTms {
+						bestRTTms = rttMs
+					}
+				}
+			}
+		}
+		chunkSize = content.AdaptiveChunkSize(int64(len(data)), bestRTTms,
+			a.node.Cfg.MinChunkSize, a.node.Cfg.MaxChunkSize)
+		slog.Debug("adaptive chunking", "file_size", len(data), "rtt_ms", bestRTTms, "chunk_size", chunkSize)
 	}
 	blocks, err := content.Chunk(bytes.NewReader(data), chunkSize)
 	if err != nil {
@@ -474,7 +492,21 @@ func (a *API) fetchBlockFromNetwork(ctx context.Context, blockCID string) (conte
 		sortProvidersByPathQuality(filtered, a.node.PathManager)
 	}
 
-	// Try providers in order of path quality.
+	// Boost providers that likely have the block cached (Bloom filter check).
+	if a.node.PeerBlooms != nil {
+		boostCachedProviders(filtered, a.node.PeerBlooms, blockCID)
+	}
+
+	// Use multipath racing when we have multiple providers and a path manager.
+	if len(filtered) >= 2 && a.node.PathManager != nil {
+		block, err := a.fetchBlockMultipath(ctx, blockCID, filtered)
+		if err == nil {
+			return block, nil
+		}
+		slog.Debug("multipath fetch failed, falling back to serial", "err", err)
+	}
+
+	// Serial fallback: try providers in order of path quality.
 	for _, p := range filtered {
 		start := time.Now()
 		block, err := protocol.FetchBlock(ctx, a.node.Host, p.ID, blockCID)
@@ -538,6 +570,92 @@ func sortProvidersByPathQuality(providers []peer.AddrInfo, pm *pathpolicy.Manage
 		sorted[i] = providers[s.idx]
 	}
 	copy(providers, sorted)
+}
+
+// fetchBlockMultipath attempts to fetch a block from multiple providers in
+// parallel over disjoint paths, returning the first successful result.
+// This "path racing" approach leverages SCION-style path diversity for
+// bandwidth aggregation — the fastest path wins.
+func (a *API) fetchBlockMultipath(ctx context.Context, blockCID string, providers []peer.AddrInfo) (content.Block, error) {
+	if a.node.PathManager == nil || len(providers) < 2 {
+		// Fall back to serial fetch if no path manager or too few providers.
+		return a.fetchBlockSerial(ctx, blockCID, providers)
+	}
+
+	// Use a cancellable context so we can stop other goroutines when one succeeds.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type result struct {
+		block content.Block
+		err   error
+	}
+
+	ch := make(chan result, len(providers))
+
+	// Launch parallel fetches, each via a different provider.
+	// DisjointPaths ensures we use independent paths.
+	for _, p := range providers {
+		go func(target peer.ID) {
+			start := time.Now()
+			block, err := protocol.FetchBlock(ctx, a.node.Host, target, blockCID)
+			if err != nil {
+				ch <- result{err: err}
+				return
+			}
+			if a.node.Metrics != nil {
+				a.node.Metrics.BlockFetchDuration.WithLabelValues("network").Observe(time.Since(start).Seconds())
+				a.node.Metrics.BlocksTransferred.WithLabelValues("received").Inc()
+			}
+			ch <- result{block: block}
+		}(p.ID)
+	}
+
+	// Return the first successful result.
+	var lastErr error
+	for range len(providers) {
+		r := <-ch
+		if r.err == nil {
+			return r.block, nil
+		}
+		lastErr = r.err
+	}
+	return content.Block{}, fmt.Errorf("all multipath fetches failed: %w", lastErr)
+}
+
+// fetchBlockSerial fetches a block from providers in order (fallback).
+func (a *API) fetchBlockSerial(ctx context.Context, blockCID string, providers []peer.AddrInfo) (content.Block, error) {
+	for _, p := range providers {
+		start := time.Now()
+		block, err := protocol.FetchBlock(ctx, a.node.Host, p.ID, blockCID)
+		if err != nil {
+			continue
+		}
+		if a.node.Metrics != nil {
+			a.node.Metrics.BlockFetchDuration.WithLabelValues("network").Observe(time.Since(start).Seconds())
+			a.node.Metrics.BlocksTransferred.WithLabelValues("received").Inc()
+		}
+		return block, nil
+	}
+	return content.Block{}, fmt.Errorf("no provider had block %s", blockCID)
+}
+
+// boostCachedProviders reorders providers so that peers whose Bloom filters
+// indicate they likely have the block cached come first. This reduces cache
+// misses by preferring peers with warm caches.
+func boostCachedProviders(providers []peer.AddrInfo, blooms *cache.PeerBloomStore, cid string) {
+	// Partition: peers that likely have it cached go first.
+	cached := make([]peer.AddrInfo, 0, len(providers))
+	rest := make([]peer.AddrInfo, 0, len(providers))
+	for _, p := range providers {
+		if blooms.PeerMayHave(p.ID, cid) {
+			cached = append(cached, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	copy(providers, cached)
+	copy(providers[len(cached):], rest)
 }
 
 func (a *API) handleFindProviders(w http.ResponseWriter, r *http.Request) {

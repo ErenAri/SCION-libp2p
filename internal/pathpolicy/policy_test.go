@@ -433,8 +433,162 @@ func TestUCB1Policy(t *testing.T) {
 		fastRatio*100, float64(slowCount)/float64(n)*100, n)
 }
 
+func TestThompsonSamplingPolicy(t *testing.T) {
+	pol := pathpolicy.DefaultThompsonSamplingPolicy()
+
+	if pol.Name() != "thompson" {
+		t.Errorf("expected name 'thompson', got %q", pol.Name())
+	}
+
+	fast := &pathpolicy.Path{
+		ID:   "fast",
+		Type: pathpolicy.PathDirect,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      2 * time.Millisecond,
+			HopCount:    0,
+			SuccessRate: 0.99,
+			SampleCount: 20,
+		},
+	}
+	slow := &pathpolicy.Path{
+		ID:   "slow",
+		Type: pathpolicy.PathRelay,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      200 * time.Millisecond,
+			HopCount:    2,
+			SuccessRate: 0.8,
+			SampleCount: 20,
+		},
+	}
+
+	paths := []*pathpolicy.Path{fast, slow}
+
+	// Thompson Sampling should converge to the fast path over many selections.
+	fastCount := 0
+	slowCount := 0
+	n := 1000
+
+	for i := 0; i < n; i++ {
+		selected := pol.SelectPath(paths)
+		if selected == nil {
+			t.Fatal("SelectPath returned nil")
+		}
+		switch selected.ID {
+		case "fast":
+			fastCount++
+		case "slow":
+			slowCount++
+		}
+	}
+
+	// After convergence, should heavily favor the fast path.
+	fastRatio := float64(fastCount) / float64(n)
+	if fastRatio < 0.6 {
+		t.Errorf("expected Thompson Sampling to favor fast path (got %.1f%% fast, %.1f%% slow)",
+			fastRatio*100, float64(slowCount)/float64(n)*100)
+	}
+	if slowCount == 0 {
+		t.Error("Thompson Sampling never explored the slow path")
+	}
+
+	t.Logf("Thompson Sampling distribution: fast=%.1f%% slow=%.1f%% (n=%d)",
+		fastRatio*100, float64(slowCount)/float64(n)*100, n)
+}
+
+func TestThompsonSamplingEmpty(t *testing.T) {
+	pol := pathpolicy.DefaultThompsonSamplingPolicy()
+
+	if p := pol.SelectPath(nil); p != nil {
+		t.Error("expected nil for nil path list")
+	}
+	if p := pol.SelectPath([]*pathpolicy.Path{}); p != nil {
+		t.Error("expected nil for empty path list")
+	}
+}
+
+func TestContextualBanditPolicy(t *testing.T) {
+	pol := pathpolicy.DefaultContextualBanditPolicy()
+
+	if pol.Name() != "contextual" {
+		t.Errorf("expected name 'contextual', got %q", pol.Name())
+	}
+
+	fast := &pathpolicy.Path{
+		ID:   "fast",
+		Type: pathpolicy.PathDirect,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      2 * time.Millisecond,
+			HopCount:    0,
+			SuccessRate: 0.99,
+			SampleCount: 20,
+		},
+	}
+	slow := &pathpolicy.Path{
+		ID:   "slow",
+		Type: pathpolicy.PathRelay,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      200 * time.Millisecond,
+			HopCount:    2,
+			SuccessRate: 0.8,
+			SampleCount: 20,
+		},
+	}
+
+	paths := []*pathpolicy.Path{fast, slow}
+
+	fastCount := 0
+	n := 200
+
+	for i := 0; i < n; i++ {
+		selected := pol.SelectPath(paths)
+		if selected == nil {
+			t.Fatal("SelectPath returned nil")
+		}
+		if selected.ID == "fast" {
+			fastCount++
+		}
+	}
+
+	// Contextual bandit should learn to favor fast path.
+	fastRatio := float64(fastCount) / float64(n)
+	if fastRatio < 0.4 {
+		t.Errorf("expected contextual bandit to favor fast path, got %.1f%%", fastRatio*100)
+	}
+	t.Logf("contextual bandit: fast=%.1f%% (n=%d)", fastRatio*100, n)
+}
+
+func TestContextualBanditWithContext(t *testing.T) {
+	pol := pathpolicy.DefaultContextualBanditPolicy()
+
+	fast := &pathpolicy.Path{
+		ID:   "fast",
+		Type: pathpolicy.PathDirect,
+		Metrics: pathpolicy.PathMetrics{
+			AvgRTT:      5 * time.Millisecond,
+			SuccessRate: 0.95,
+			SampleCount: 10,
+		},
+	}
+	paths := []*pathpolicy.Path{fast}
+
+	ctx := pathpolicy.PathContext{
+		PeerCount:     5,
+		ContentSizeKB: 512,
+		HourOfDay:     14,
+		AvgNetworkRTT: 10.0,
+	}
+
+	selected := pol.SelectPathWithContext(paths, ctx)
+	if selected == nil {
+		t.Fatal("expected non-nil path")
+	}
+
+	// Update should not panic.
+	pol.UpdateContext("fast", ctx, 1.0)
+}
+
 func TestPolicyFromNameNewPolicies(t *testing.T) {
-	for _, name := range []string{"decaying-epsilon", "ucb1"} {
+	for _, name := range []string{"decaying-epsilon", "ucb1", "thompson", "contextual"} {
 		p, err := pathpolicy.PolicyFromName(name)
 		if err != nil {
 			t.Errorf("PolicyFromName(%q): unexpected error: %v", name, err)

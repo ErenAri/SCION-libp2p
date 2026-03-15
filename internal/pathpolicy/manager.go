@@ -93,6 +93,10 @@ func (m *Manager) BestPath(target peer.ID) *Path {
 		return p.SelectPath(ps.All())
 	case *UCB1Policy:
 		return p.SelectPath(ps.All())
+	case *ThompsonSamplingPolicy:
+		return p.SelectPath(ps.All())
+	case *ContextualBanditPolicy:
+		return p.SelectPath(ps.All())
 	}
 
 	return ps.Best(m.policy)

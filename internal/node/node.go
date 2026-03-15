@@ -12,6 +12,7 @@ import (
 
 	"github.com/erena/scion-libp2p/internal/cache"
 	"github.com/erena/scion-libp2p/internal/content"
+	"github.com/erena/scion-libp2p/internal/erasure"
 	"github.com/erena/scion-libp2p/internal/metrics"
 	"github.com/erena/scion-libp2p/internal/pathpolicy"
 	"github.com/erena/scion-libp2p/internal/protocol"
@@ -29,6 +30,7 @@ type Node struct {
 	ContentRouter      *content.ContentRouter
 	BlockCache         *cache.LRUCache
 	ReplicationTracker *content.ReplicationTracker
+	PeerBlooms         *cache.PeerBloomStore // per-peer cache Bloom filters
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -96,6 +98,19 @@ func (n *Node) Start(ctx context.Context) error {
 	// Initialize replication tracker.
 	n.ReplicationTracker = content.NewReplicationTracker(5) // replicate after 5 fetches
 
+	// Initialize cooperative caching (Bloom filter exchange).
+	n.PeerBlooms = cache.NewPeerBloomStore()
+	cacheSummaryHandler := &protocol.CacheSummaryHandler{
+		OnReceive: func(from peer.ID, data []byte) {
+			bf := cache.BloomFromBytes(data)
+			if bf != nil {
+				n.PeerBlooms.Set(from, bf)
+				slog.Debug("received cache summary", "from", from.String()[:8], "size", len(data))
+			}
+		},
+	}
+	cacheSummaryHandler.Register(n.Host)
+
 	// Parse bootstrap peers.
 	var bootstrapPeers []peer.AddrInfo
 	if len(n.Cfg.BootstrapPeers) > 0 {
@@ -152,6 +167,9 @@ func (n *Node) Start(ctx context.Context) error {
 	// Start background replication of popular blocks.
 	go n.replicationLoop()
 
+	// Start periodic Bloom filter exchange for cooperative caching.
+	go n.cacheSummaryLoop()
+
 	slog.Info("node started",
 		"peerID", n.Host.ID().String(),
 		"addrs", n.Host.Addrs(),
@@ -186,6 +204,12 @@ func (n *Node) replicatePopularBlocks() {
 		return
 	}
 
+	// Use erasure-coded replication if enabled.
+	if n.Cfg.EnableErasure {
+		n.replicateWithErasure(popular, peers)
+		return
+	}
+
 	replicated := 0
 	for _, cid := range popular {
 		block, err := n.ContentStore.Get(cid)
@@ -212,6 +236,125 @@ func (n *Node) replicatePopularBlocks() {
 		n.Metrics.BlocksReplicated.Add(float64(replicated))
 	}
 	slog.Debug("replication cycle complete", "replicated", replicated, "popular", len(popular))
+}
+
+// replicateWithErasure encodes popular blocks into fragments and distributes
+// them across peers. Each peer gets 1-2 fragments instead of the full block,
+// achieving the same resilience with ~1.5x storage overhead (for k=4, m=2)
+// instead of N× overhead from full replication.
+func (n *Node) replicateWithErasure(popular []string, peers []peer.ID) {
+	dataShards := n.Cfg.DataShards
+	parityShards := n.Cfg.ParityShards
+	if dataShards <= 0 {
+		dataShards = 4
+	}
+	if parityShards <= 0 {
+		parityShards = 2
+	}
+
+	replicated := 0
+	for _, cid := range popular {
+		block, err := n.ContentStore.Get(cid)
+		if err != nil {
+			continue
+		}
+
+		encStart := time.Now()
+		fragments, err := erasure.Encode(block.Data, cid, dataShards, parityShards)
+		if err != nil {
+			slog.Warn("erasure encode failed", "cid", cid[:8], "err", err)
+			continue
+		}
+		if n.Metrics != nil {
+			n.Metrics.ErasureEncodeSeconds.Observe(time.Since(encStart).Seconds())
+		}
+
+		// Store all fragments locally.
+		for _, f := range fragments {
+			if err := n.ContentStore.PutFragment(cid, f.Index, f.Data); err != nil {
+				slog.Debug("store fragment failed", "cid", cid[:8], "index", f.Index, "err", err)
+			}
+		}
+
+		// Distribute fragments round-robin across peers.
+		// Each peer gets one fragment; if we have more fragments than peers,
+		// some peers get multiple fragments.
+		eligiblePeers := make([]peer.ID, 0, len(peers))
+		for _, p := range peers {
+			if p != n.Host.ID() {
+				eligiblePeers = append(eligiblePeers, p)
+			}
+		}
+		if len(eligiblePeers) == 0 {
+			continue
+		}
+
+		for i, f := range fragments {
+			target := eligiblePeers[i%len(eligiblePeers)]
+			fragBlock := content.Block{
+				CID:  f.CID,
+				Data: f.Data,
+			}
+			ctx, cancel := context.WithTimeout(n.ctx, 10*time.Second)
+			err := protocol.PushBlock(ctx, n.Host, target, fragBlock)
+			cancel()
+			if err != nil {
+				slog.Debug("fragment push failed", "peer", target.String()[:8], "index", f.Index, "err", err)
+				continue
+			}
+			replicated++
+		}
+	}
+
+	if replicated > 0 && n.Metrics != nil {
+		n.Metrics.FragmentsStored.Add(float64(replicated))
+	}
+	slog.Debug("erasure replication cycle complete", "fragments_pushed", replicated, "popular", len(popular))
+}
+
+// cacheSummaryLoop periodically broadcasts cache Bloom filters to all peers.
+func (n *Node) cacheSummaryLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-ticker.C:
+			n.broadcastCacheSummary()
+		}
+	}
+}
+
+func (n *Node) broadcastCacheSummary() {
+	if n.BlockCache == nil {
+		return
+	}
+
+	cids := n.BlockCache.CIDs()
+	if len(cids) == 0 {
+		return
+	}
+
+	bf := cache.NewBloomFilter(max(len(cids), 100), 0.01)
+	for _, cid := range cids {
+		bf.Add(cid)
+	}
+	data := bf.Bytes()
+
+	peers := n.Host.Network().Peers()
+	for _, p := range peers {
+		if p == n.Host.ID() {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(n.ctx, 5*time.Second)
+		err := protocol.SendCacheSummary(ctx, n.Host, p, data)
+		cancel()
+		if err != nil {
+			slog.Debug("cache summary send failed", "peer", p.String()[:8], "err", err)
+		}
+	}
 }
 
 // Stop gracefully shuts down the node.

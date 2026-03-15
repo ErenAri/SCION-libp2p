@@ -32,6 +32,16 @@ type Config struct {
 	// Content
 	ChunkSizeBytes int `mapstructure:"chunk_size_bytes"`
 
+	// Erasure coding
+	EnableErasure bool `mapstructure:"enable_erasure"` // use Reed-Solomon erasure coding for replication
+	DataShards    int  `mapstructure:"data_shards"`    // number of data shards (default 4)
+	ParityShards  int  `mapstructure:"parity_shards"`  // number of parity shards (default 2)
+
+	// Adaptive chunking
+	AdaptiveChunking bool `mapstructure:"adaptive_chunking"` // auto-select chunk size based on content/network
+	MinChunkSize     int  `mapstructure:"min_chunk_size"`    // minimum chunk size (default 64KB)
+	MaxChunkSize     int  `mapstructure:"max_chunk_size"`    // maximum chunk size (default 1MB)
+
 	// Path selection
 	PathEpsilon float64 `mapstructure:"path_epsilon"` // epsilon-greedy exploration rate (default 0.1)
 
@@ -59,7 +69,13 @@ func DefaultConfig() Config {
 		PathPolicy:     "balanced",
 		CacheMaxBytes:  128 * 1024 * 1024, // 128 MB
 		ChunkSizeBytes: 256 * 1024,        // 256 KB
-		PathEpsilon:    0.1,
+		EnableErasure:    false,
+		DataShards:       4,
+		ParityShards:     2,
+		AdaptiveChunking: false,
+		MinChunkSize:     64 * 1024,
+		MaxChunkSize:     1024 * 1024,
+		PathEpsilon:      0.1,
 		ProbeInterval:  10 * time.Second,
 		ProbeTimeout:   3 * time.Second,
 		LogLevel:       "info",

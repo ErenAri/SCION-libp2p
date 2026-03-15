@@ -110,6 +110,52 @@ func (s *Store) GetManifest(rootCID string) (Manifest, error) {
 	return m, nil
 }
 
+// PutFragment stores an erasure-coded fragment on disk.
+func (s *Store) PutFragment(parentCID string, index int, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	fragDir := filepath.Join(s.dir, "fragments", parentCID)
+	if err := os.MkdirAll(fragDir, 0o700); err != nil {
+		return fmt.Errorf("create fragment dir: %w", err)
+	}
+	path := filepath.Join(fragDir, fmt.Sprintf("%d.frag", index))
+	return os.WriteFile(path, data, 0o600)
+}
+
+// GetFragment retrieves an erasure-coded fragment by parent CID and index.
+func (s *Store) GetFragment(parentCID string, index int) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.dir, "fragments", parentCID, fmt.Sprintf("%d.frag", index))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read fragment %s/%d: %w", parentCID, index, err)
+	}
+	return data, nil
+}
+
+// ListFragments returns available fragment indices for a parent CID.
+func (s *Store) ListFragments(parentCID string) []int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	fragDir := filepath.Join(s.dir, "fragments", parentCID)
+	entries, err := os.ReadDir(fragDir)
+	if err != nil {
+		return nil
+	}
+	var indices []int
+	for _, e := range entries {
+		var idx int
+		if _, err := fmt.Sscanf(e.Name(), "%d.frag", &idx); err == nil {
+			indices = append(indices, idx)
+		}
+	}
+	return indices
+}
+
 func (s *Store) blockPath(cid string) string {
 	return filepath.Join(s.dir, cid+".block")
 }

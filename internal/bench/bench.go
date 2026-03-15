@@ -21,12 +21,13 @@ import (
 
 // Config configures a benchmark run.
 type Config struct {
-	NodeCount   int    `json:"node_count"`
-	ContentSize int    `json:"content_size_bytes"` // bytes of test content
-	Requests    int    `json:"requests"`           // number of fetch requests
-	ChunkSize   int    `json:"chunk_size_bytes"`
-	Policy      string `json:"policy"`  // path selection policy for this run
-	Epsilon     float64 `json:"epsilon"` // epsilon for epsilon-greedy policy
+	NodeCount     int    `json:"node_count"`
+	ContentSize   int    `json:"content_size_bytes"` // bytes of test content
+	Requests      int    `json:"requests"`           // number of fetch requests
+	ChunkSize     int    `json:"chunk_size_bytes"`
+	Policy        string `json:"policy"`  // path selection policy for this run
+	Epsilon       float64 `json:"epsilon"` // epsilon for epsilon-greedy policy
+	TimeSeriesDir string `json:"timeseries_dir,omitempty"` // directory for per-request convergence CSVs
 }
 
 // Results holds all benchmark results.
@@ -40,15 +41,44 @@ type Results struct {
 
 // LatencyResult holds retrieval latency measurements.
 type LatencyResult struct {
-	AvgLatencyMs float64   `json:"avg_latency_ms"`
-	P50LatencyMs float64   `json:"p50_latency_ms"`
-	P95LatencyMs float64   `json:"p95_latency_ms"`
-	P99LatencyMs float64   `json:"p99_latency_ms"`
-	MinLatencyMs float64   `json:"min_latency_ms"`
-	MaxLatencyMs float64   `json:"max_latency_ms"`
-	ThroughputMBs float64  `json:"throughput_mbs"`
-	Samples      int       `json:"samples"`
-	AllMs        []float64 `json:"all_ms"`
+	AvgLatencyMs  float64   `json:"avg_latency_ms"`
+	P50LatencyMs  float64   `json:"p50_latency_ms"`
+	P95LatencyMs  float64   `json:"p95_latency_ms"`
+	P99LatencyMs  float64   `json:"p99_latency_ms"`
+	MinLatencyMs  float64   `json:"min_latency_ms"`
+	MaxLatencyMs  float64   `json:"max_latency_ms"`
+	ThroughputMBs float64   `json:"throughput_mbs"`
+	FairnessIndex float64   `json:"fairness_index"` // Jain's fairness over per-request latencies
+	Samples       int       `json:"samples"`
+	AllMs         []float64 `json:"all_ms"`
+	Timestamps    []float64 `json:"timestamps_s,omitempty"` // elapsed seconds per request (for convergence plots)
+}
+
+// WriteTimeSeriesCSV writes per-request latency data for convergence analysis.
+// Output columns: request_index,elapsed_s,latency_ms
+func (r *LatencyResult) WriteTimeSeriesCSV(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	w.Write([]string{"request_index", "elapsed_s", "latency_ms"})
+	for i := range r.AllMs {
+		ts := 0.0
+		if i < len(r.Timestamps) {
+			ts = r.Timestamps[i]
+		}
+		w.Write([]string{
+			strconv.Itoa(i),
+			strconv.FormatFloat(ts, 'f', 3, 64),
+			strconv.FormatFloat(r.AllMs[i], 'f', 2, 64),
+		})
+	}
+	return nil
 }
 
 // CacheResult compares performance with and without cache.
@@ -100,6 +130,14 @@ func Run(cfg Config) (*Results, error) {
 	}
 	results.Latency = *latencyResult
 
+	// Write per-request time series for convergence analysis if configured.
+	if cfg.TimeSeriesDir != "" {
+		tsPath := fmt.Sprintf("%s/timeseries_%s_%d.csv", cfg.TimeSeriesDir, cfg.Policy, cfg.NodeCount)
+		if err := latencyResult.WriteTimeSeriesCSV(tsPath); err != nil {
+			slog.Warn("failed to write time series", "err", err)
+		}
+	}
+
 	cacheResult, err := runCacheBench(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("cache bench: %w", err)
@@ -117,14 +155,15 @@ func Run(cfg Config) (*Results, error) {
 }
 
 // RunComparison runs the policy comparison experiment.
-// Tests epsilon-greedy, decaying-epsilon, ucb1, latency, and random policies.
+// Tests epsilon-greedy, decaying-epsilon, ucb1, thompson, latency, and random policies.
 func RunComparison(nodeCount, contentSize, requests, chunkSize int) (*ComparisonResult, error) {
-	return RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, 1)
+	return RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, 1, "")
 }
 
 // RunComparisonWithRuns runs the policy comparison with multiple runs per config.
 // Results are averaged with standard deviation reported.
-func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int) (*ComparisonResult, error) {
+// If timeSeriesDir is non-empty, per-request convergence CSVs are written there.
+func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int, timeSeriesDir string) (*ComparisonResult, error) {
 	if runs < 1 {
 		runs = 1
 	}
@@ -136,6 +175,8 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 		{"epsilon-greedy", 0.1},
 		{"decaying-epsilon", 0},
 		{"ucb1", 0},
+		{"thompson", 0},
+		{"contextual", 0},
 		{"latency", 0},
 		{"random", 0},
 	}
@@ -145,16 +186,17 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 	for _, pol := range policies {
 		slog.Info("running comparison", "policy", pol.name, "nodes", nodeCount, "runs", runs)
 
-		var avgLats, p50s, p95s, p99s, throughputs, cacheRatios, avails []float64
+		var avgLats, p50s, p95s, p99s, throughputs, cacheRatios, avails, fairnesses []float64
 
 		for r := 0; r < runs; r++ {
 			cfg := Config{
-				NodeCount:   nodeCount,
-				ContentSize: contentSize,
-				Requests:    requests,
-				ChunkSize:   chunkSize,
-				Policy:      pol.name,
-				Epsilon:     pol.epsilon,
+				NodeCount:     nodeCount,
+				ContentSize:   contentSize,
+				Requests:      requests,
+				ChunkSize:     chunkSize,
+				Policy:        pol.name,
+				Epsilon:       pol.epsilon,
+				TimeSeriesDir: timeSeriesDir,
 			}
 
 			res, err := Run(cfg)
@@ -170,6 +212,7 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 			throughputs = append(throughputs, res.Latency.ThroughputMBs)
 			cacheRatios = append(cacheRatios, res.CacheComparison.HitRatio)
 			avails = append(avails, res.Resilience.Availability)
+			fairnesses = append(fairnesses, res.Latency.FairnessIndex)
 		}
 
 		if len(avgLats) == 0 {
@@ -188,7 +231,7 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 			CacheHitRatio: mean(cacheRatios),
 			Availability:  mean(avails),
 			StddevLatMs:   stddev(avgLats),
-			FairnessIndex: jainFairness(avgLats),
+			FairnessIndex: mean(fairnesses),
 		}
 		result.Configs = append(result.Configs, entry)
 	}
@@ -197,12 +240,12 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 }
 
 // RunScalability runs the comparison at multiple node counts.
-func RunScalability(nodeCounts []int, contentSize, requests, chunkSize, runs int) (*ComparisonResult, error) {
+func RunScalability(nodeCounts []int, contentSize, requests, chunkSize, runs int, timeSeriesDir string) (*ComparisonResult, error) {
 	result := &ComparisonResult{}
 
 	for _, n := range nodeCounts {
 		slog.Info("scalability experiment", "nodes", n)
-		comp, err := RunComparisonWithRuns(n, contentSize, requests, chunkSize, runs)
+		comp, err := RunComparisonWithRuns(n, contentSize, requests, chunkSize, runs, timeSeriesDir)
 		if err != nil {
 			slog.Error("scalability run failed", "nodes", n, "err", err)
 			continue
@@ -287,6 +330,7 @@ func runLatencyBench(cfg Config) (*LatencyResult, error) {
 	_ = blocks
 
 	var latencies []float64
+	var timestamps []float64
 	ctx := context.Background()
 	totalBytes := int64(0)
 	benchStart := time.Now()
@@ -307,13 +351,15 @@ func runLatencyBench(cfg Config) (*LatencyResult, error) {
 		}
 		elapsed := time.Since(start)
 		latencies = append(latencies, float64(elapsed.Milliseconds()))
+		timestamps = append(timestamps, time.Since(benchStart).Seconds())
 	}
 
 	benchDuration := time.Since(benchStart)
 
 	result := &LatencyResult{
-		Samples: len(latencies),
-		AllMs:   latencies,
+		Samples:    len(latencies),
+		AllMs:      latencies,
+		Timestamps: timestamps,
 	}
 
 	if len(latencies) > 0 {
@@ -337,6 +383,10 @@ func runLatencyBench(cfg Config) (*LatencyResult, error) {
 	if benchDuration.Seconds() > 0 {
 		result.ThroughputMBs = float64(totalBytes) / benchDuration.Seconds() / (1024 * 1024)
 	}
+
+	// Compute Jain's fairness index over per-request latencies.
+	// Higher values (closer to 1.0) indicate more consistent performance.
+	result.FairnessIndex = jainFairness(latencies)
 
 	slog.Info("latency benchmark complete",
 		"policy", cfg.Policy,

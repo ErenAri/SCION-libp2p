@@ -222,6 +222,104 @@ func TestTamperedManifest(t *testing.T) {
 	}
 }
 
+func TestAdaptiveChunkSizeSmallFile(t *testing.T) {
+	// File smaller than minChunk → returns file size.
+	size := content.AdaptiveChunkSize(32*1024, 10, 64*1024, 1024*1024)
+	if size != 32*1024 {
+		t.Errorf("expected 32KB for small file, got %d", size)
+	}
+}
+
+func TestAdaptiveChunkSizeHighRTT(t *testing.T) {
+	// High RTT (>50ms) → fewer chunks (4), so larger chunk size.
+	fileSize := int64(4 * 1024 * 1024) // 4 MB
+	size := content.AdaptiveChunkSize(fileSize, 100, 64*1024, 1024*1024)
+	// Target 4 chunks: 4MB / 4 = 1MB, clamped to maxChunk.
+	if size > 1024*1024 {
+		t.Errorf("expected chunk size <= 1MB, got %d", size)
+	}
+	if size < 64*1024 {
+		t.Errorf("expected chunk size >= 64KB, got %d", size)
+	}
+}
+
+func TestAdaptiveChunkSizeLowRTT(t *testing.T) {
+	// Low RTT (<5ms) → more chunks (16), so smaller chunk size.
+	fileSize := int64(4 * 1024 * 1024) // 4 MB
+	size := content.AdaptiveChunkSize(fileSize, 1, 64*1024, 1024*1024)
+	// Target 16 chunks: 4MB / 16 = 256KB.
+	if size > 512*1024 {
+		t.Errorf("expected smaller chunk for low RTT, got %d", size)
+	}
+	if size < 64*1024 {
+		t.Errorf("expected chunk size >= minChunk, got %d", size)
+	}
+}
+
+func TestAdaptiveChunkSizeClampMin(t *testing.T) {
+	// Very large file with low RTT → many small chunks, but clamped to min.
+	fileSize := int64(1024) // 1KB, but > minChunk is false here
+	minChunk := 64 * 1024
+	size := content.AdaptiveChunkSize(fileSize, 2, minChunk, 1024*1024)
+	// File < minChunk → returns fileSize.
+	if size != int(fileSize) {
+		t.Errorf("expected %d, got %d", fileSize, size)
+	}
+}
+
+func TestAdaptiveChunkSizeDefaults(t *testing.T) {
+	// Zero min/max should use defaults.
+	size := content.AdaptiveChunkSize(2*1024*1024, 10, 0, 0)
+	if size <= 0 {
+		t.Errorf("expected positive chunk size, got %d", size)
+	}
+}
+
+func TestFragmentStorage(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "scion-frag-test-*")
+	if err != nil {
+		t.Fatalf("create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := content.NewStore(tmpDir)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	parentCID := "parent-abc"
+	fragData := []byte("fragment-data-0")
+
+	// Put fragment.
+	if err := store.PutFragment(parentCID, 0, fragData); err != nil {
+		t.Fatalf("put fragment: %v", err)
+	}
+	if err := store.PutFragment(parentCID, 1, []byte("fragment-data-1")); err != nil {
+		t.Fatalf("put fragment 1: %v", err)
+	}
+
+	// Get fragment.
+	got, err := store.GetFragment(parentCID, 0)
+	if err != nil {
+		t.Fatalf("get fragment: %v", err)
+	}
+	if !bytes.Equal(got, fragData) {
+		t.Error("fragment data doesn't match")
+	}
+
+	// List fragments.
+	indices := store.ListFragments(parentCID)
+	if len(indices) != 2 {
+		t.Errorf("expected 2 fragments, got %d", len(indices))
+	}
+
+	// List for nonexistent parent.
+	empty := store.ListFragments("nonexistent")
+	if len(empty) != 0 {
+		t.Errorf("expected 0 fragments for nonexistent parent, got %d", len(empty))
+	}
+}
+
 func TestReplicationTracker(t *testing.T) {
 	rt := content.NewReplicationTracker(3) // threshold = 3 fetches
 

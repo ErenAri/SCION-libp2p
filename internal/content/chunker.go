@@ -58,6 +58,44 @@ type Manifest struct {
 	Signature   string   `json:"signature,omitempty"`    // hex Ed25519 signature
 }
 
+// AdaptiveChunkSize computes an optimal chunk size based on file size and
+// estimated path RTT. Small files use a single chunk; large files on
+// high-latency paths use larger chunks (fewer round trips), while large
+// files on low-latency paths use smaller chunks (more parallelism).
+func AdaptiveChunkSize(fileSize int64, pathRTTms float64, minChunk, maxChunk int) int {
+	if minChunk <= 0 {
+		minChunk = 64 * 1024 // 64 KB
+	}
+	if maxChunk <= 0 {
+		maxChunk = 1024 * 1024 // 1 MB
+	}
+
+	// Small files: single chunk.
+	if fileSize <= int64(minChunk) {
+		return int(fileSize)
+	}
+
+	// Target 4-16 chunks depending on RTT.
+	// High RTT → larger chunks (fewer round trips).
+	// Low RTT → smaller chunks (more parallelism).
+	targetChunks := 8 // default
+	if pathRTTms > 50 {
+		targetChunks = 4 // high latency: fewer, larger chunks
+	} else if pathRTTms < 5 {
+		targetChunks = 16 // low latency: more, smaller chunks
+	}
+
+	chunkSize := int(fileSize) / targetChunks
+	if chunkSize < minChunk {
+		chunkSize = minChunk
+	}
+	if chunkSize > maxChunk {
+		chunkSize = maxChunk
+	}
+
+	return chunkSize
+}
+
 // BuildManifest creates a manifest from a list of blocks and metadata.
 func BuildManifest(name string, totalSize int64, blocks []Block) Manifest {
 	cids := make([]string, len(blocks))
