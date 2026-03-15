@@ -25,7 +25,7 @@
 \affiliation{%
   \institution{Independent Research}
 }
-\email{eren@example.com}
+\email{erenari27@gmail.com}
 
 \begin{abstract}
 Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{scion-libp2p}, a path-aware P2P content overlay that combines continuous path probing with epsilon-greedy path selection, NDN-style in-network relay caching, and popularity-aware cache eviction. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies a weighted scoring policy with controlled exploration to distribute load across viable paths. We evaluate three path selection strategies---epsilon-greedy, greedy min-RTT, and random---and show that epsilon-greedy achieves up to 42\% lower tail latency (p95) than greedy selection under contention, while popularity-aware caching outperforms pure LRU by 15--25\% in cache hit ratio for Zipf-distributed workloads. Content remains fully available after 30\% node failure through proactive replication.
