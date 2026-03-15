@@ -1,0 +1,54 @@
+# Build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# AI tool config
+.gemini/
+.agent/
+.agents/
+.claude/
+claudedocs/
+
+# Documents (keep in a separate docs repo)
+*.docx
+*.pdf
+
+# Coverage
+coverage.out
+coverage.html
+
+# Binary
+scion-libp2p
+scion-libp2p.exe
+
+# Data directory
+/data/
+
+# Bench results
+results.csv
+results.json
+
+# Temporary / local
+/tmp/
+*.log

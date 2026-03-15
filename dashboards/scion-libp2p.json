@@ -1,0 +1,201 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Connected Peers",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "scion_libp2p_peers_connected",
+          "legendFormat": "peers",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 3 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Content Retrievals Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 4, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(scion_libp2p_content_retrievals_total[1m])",
+          "legendFormat": "retrievals/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Cache Hit Ratio",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "scion_libp2p_cache_hits_total / (scion_libp2p_cache_hits_total + scion_libp2p_cache_misses_total)",
+          "legendFormat": "hit ratio",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Blocks Replicated",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "scion_libp2p_blocks_replicated_total",
+          "legendFormat": "total",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Cache Size",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 },
+      "targets": [
+        {
+          "expr": "scion_libp2p_cache_bytes",
+          "legendFormat": "bytes",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "Path RTT Distribution (Direct vs Relay)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"direct\"}[5m]))",
+          "legendFormat": "direct p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"direct\"}[5m]))",
+          "legendFormat": "direct p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"relay\"}[5m]))",
+          "legendFormat": "relay p50",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"relay\"}[5m]))",
+          "legendFormat": "relay p95",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Block Fetch Latency by Source",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source=\"local\"}[5m]))",
+          "legendFormat": "local p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source=\"cache\"}[5m]))",
+          "legendFormat": "cache p50",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source=\"network\"}[5m]))",
+          "legendFormat": "network p50",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Path Selections by Type",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "scion_libp2p_path_selections_total",
+          "legendFormat": "{{path_type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Blocks Transferred",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "targets": [
+        {
+          "expr": "rate(scion_libp2p_blocks_transferred_total{direction=\"sent\"}[1m])",
+          "legendFormat": "sent/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(scion_libp2p_blocks_transferred_total{direction=\"received\"}[1m])",
+          "legendFormat": "received/s",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Probe Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "targets": [
+        {
+          "expr": "rate(scion_libp2p_probe_failures_total[5m])",
+          "legendFormat": "failures/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(scion_libp2p_stale_paths_pruned_total[5m])",
+          "legendFormat": "stale pruned/s",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["scion-libp2p"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "title": "SCION-libp2p",
+  "uid": "scion-libp2p-overview"
+}

@@ -1,0 +1,14 @@
+{
+  "listen_addrs": ["/ip4/0.0.0.0/tcp/9000"],
+  "api_addr": "127.0.0.1:9090",
+  "metrics_addr": ":2112",
+  "data_dir": "./data",
+  "bootstrap_peers": [],
+  "enable_relay": true,
+  "enable_mdns": true,
+  "path_policy": "epsilon-greedy",
+  "path_epsilon": 0.1,
+  "cache_max_bytes": 134217728,
+  "chunk_size_bytes": 262144,
+  "log_level": "info"
+}
