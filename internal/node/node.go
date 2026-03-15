@@ -33,6 +33,7 @@ type Node struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	mdns      transport.MDNSService
 	startedAt time.Time
 }
 
@@ -118,8 +119,11 @@ func (n *Node) Start(ctx context.Context) error {
 
 	// Start mDNS if configured.
 	if n.Cfg.EnableMDNS {
-		if err := transport.SetupMDNS(n.Host); err != nil {
+		svc, err := transport.SetupMDNS(n.ctx, n.Host)
+		if err != nil {
 			slog.Warn("failed to start mDNS", "err", err)
+		} else {
+			n.mdns = svc
 		}
 	}
 
@@ -207,14 +211,26 @@ func (n *Node) replicatePopularBlocks() {
 }
 
 // Stop gracefully shuts down the node.
+// Shutdown order matters: stop discovery first so no new connections are
+// initiated, cancel the context so in-flight operations abort, then close
+// the DHT and host.
 func (n *Node) Stop() error {
 	slog.Info("stopping node")
 	if n.PathManager != nil {
 		n.PathManager.Stop()
 	}
+	// Stop mDNS discovery first to prevent new connection attempts.
+	if n.mdns != nil {
+		if err := n.mdns.Close(); err != nil {
+			slog.Warn("error closing mDNS", "err", err)
+		}
+	}
+	// Cancel context so in-flight connections and goroutines stop.
 	if n.cancel != nil {
 		n.cancel()
 	}
+	// Brief drain period for in-flight connection upgrades to finish.
+	time.Sleep(50 * time.Millisecond)
 	if n.DHT != nil {
 		if err := n.DHT.Close(); err != nil {
 			slog.Warn("error closing DHT", "err", err)

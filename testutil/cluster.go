@@ -22,8 +22,9 @@ type Cluster struct {
 
 // ClusterOptions allows configuring cluster nodes with specific policies.
 type ClusterOptions struct {
-	Policy  string  // path selection policy (default: "balanced")
-	Epsilon float64 // epsilon for epsilon-greedy policy
+	Policy      string  // path selection policy (default: "balanced")
+	Epsilon     float64 // epsilon for epsilon-greedy policy
+	DisableMDNS bool    // disable mDNS (recommended for benchmarks to avoid shutdown races)
 }
 
 func clusterConfig(i, port int, tmpDir string) node.Config {
@@ -44,7 +45,7 @@ func clusterConfigWithOptions(i, port int, tmpDir string, opts ClusterOptions) n
 		BootstrapPeers: nil,
 		DataDir:        tmpDir,
 		EnableRelay:    true,
-		EnableMDNS:     true,
+		EnableMDNS:     !opts.DisableMDNS,
 		APIAddr:        fmt.Sprintf("127.0.0.1:%d", port+1000),
 		MetricsAddr:    "", // disable metrics to avoid port conflicts in benchmarks
 		PathPolicy:     policy,
@@ -226,10 +227,11 @@ func (c *Cluster) Stop(t *testing.T) {
 
 // Cleanup shuts down all nodes without *testing.T (for benchmarks).
 func (c *Cluster) Cleanup() {
-	c.cancel()
+	// Node.Stop() handles mDNS closure, context cancel, and drain internally.
 	for _, n := range c.Nodes {
 		n.Stop()
 	}
+	c.cancel() // cancel cluster context after all nodes are stopped
 	for _, dir := range c.tmpDirs {
 		os.RemoveAll(dir)
 	}

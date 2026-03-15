@@ -70,27 +70,44 @@ func ParseBootstrapPeers(addrs []string) ([]peer.AddrInfo, error) {
 	return peers, nil
 }
 
+// MDNSService wraps the mDNS service so callers can close it on shutdown.
+type MDNSService interface {
+	Close() error
+}
+
+type mdnsWrapper struct {
+	svc mdns.Service
+}
+
+func (w *mdnsWrapper) Close() error { return w.svc.Close() }
+
 // SetupMDNS starts mDNS-based local peer discovery.
-func SetupMDNS(h host.Host) error {
-	n := &discoveryNotifee{h: h}
+// The returned service must be closed before the host to avoid connection races.
+func SetupMDNS(ctx context.Context, h host.Host) (MDNSService, error) {
+	n := &discoveryNotifee{h: h, ctx: ctx}
 	svc := mdns.NewMdnsService(h, mdnsServiceTag, n)
 	if err := svc.Start(); err != nil {
-		return fmt.Errorf("start mDNS: %w", err)
+		return nil, fmt.Errorf("start mDNS: %w", err)
 	}
 	slog.Info("mDNS discovery started", "tag", mdnsServiceTag)
-	return nil
+	return &mdnsWrapper{svc: svc}, nil
 }
 
 type discoveryNotifee struct {
-	h host.Host
+	h   host.Host
+	ctx context.Context
 }
 
 func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	if pi.ID == n.h.ID() {
 		return // skip self
 	}
+	// Use the node's context so discovery stops when the node shuts down.
+	if n.ctx.Err() != nil {
+		return
+	}
 	slog.Debug("mDNS peer found", "peer", pi.ID.String())
-	if err := n.h.Connect(context.Background(), pi); err != nil {
+	if err := n.h.Connect(n.ctx, pi); err != nil {
 		slog.Debug("mDNS connect failed", "peer", pi.ID.String(), "err", err)
 	} else {
 		slog.Info("connected via mDNS", "peer", pi.ID.String())
