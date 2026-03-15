@@ -30,9 +30,18 @@ Thumbs.db
 .claude/
 claudedocs/
 
-# Documents (keep in a separate docs repo)
+# Documents
 *.docx
-*.pdf
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
 
 # Coverage
 coverage.out
