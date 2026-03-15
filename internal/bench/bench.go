@@ -467,9 +467,10 @@ func runResilienceBench(cfg Config) (*ResilienceResult, error) {
 
 func createBenchCluster(cfg Config) (*testutil.Cluster, func(), error) {
 	opts := testutil.ClusterOptions{
-		Policy:      cfg.Policy,
-		Epsilon:     cfg.Epsilon,
-		DisableMDNS: true, // benchmarks connect nodes manually; mDNS causes shutdown races
+		Policy:        cfg.Policy,
+		Epsilon:       cfg.Epsilon,
+		DisableMDNS:   true, // benchmarks connect nodes manually; mDNS causes shutdown races
+		ProbeInterval: 3 * time.Second,
 	}
 	cluster := testutil.NewClusterWithOptions(cfg.NodeCount, opts)
 	if cluster == nil {
@@ -480,8 +481,11 @@ func createBenchCluster(cfg Config) (*testutil.Cluster, func(), error) {
 		cluster.Cleanup()
 	}
 
-	// Wait for mesh formation.
-	time.Sleep(2 * time.Second)
+	// Wait for mesh formation + at least one probe cycle to complete.
+	// The path manager runs an initial probe immediately on Start(), then
+	// probes every ProbeInterval. We wait long enough for the initial probe
+	// to finish so all policies have path quality data ("warm start").
+	time.Sleep(5 * time.Second)
 	return cluster, cleanup, nil
 }
 

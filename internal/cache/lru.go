@@ -13,6 +13,12 @@ type PinChecker interface {
 	IsPinned(cid string) bool
 }
 
+// MetricsHook allows wiring cache events to external metrics (e.g., Prometheus).
+type MetricsHook struct {
+	OnHit  func()
+	OnMiss func()
+}
+
 // LRUCache is a thread-safe, byte-size-limited LRU cache for content blocks.
 type LRUCache struct {
 	maxBytes int64
@@ -25,7 +31,8 @@ type LRUCache struct {
 	hits         atomic.Int64
 	misses       atomic.Int64
 
-	pinChecker PinChecker // optional: if set, pinned blocks are never evicted
+	pinChecker  PinChecker  // optional: if set, pinned blocks are never evicted
+	metricsHook MetricsHook // optional: called on hit/miss for Prometheus integration
 }
 
 type cacheEntry struct {
@@ -51,6 +58,13 @@ func (c *LRUCache) SetPinChecker(pc PinChecker) {
 	c.pinChecker = pc
 }
 
+// SetMetricsHook sets callbacks for cache hit/miss events (e.g., Prometheus counters).
+func (c *LRUCache) SetMetricsHook(hook MetricsHook) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.metricsHook = hook
+}
+
 // Get retrieves a block from the cache. Returns the block and true if found.
 func (c *LRUCache) Get(cid string) (content.Block, bool) {
 	c.mu.Lock()
@@ -61,10 +75,16 @@ func (c *LRUCache) Get(cid string) (content.Block, bool) {
 		entry.fetchCount++
 		c.eviction.MoveToFront(elem)
 		c.hits.Add(1)
+		if c.metricsHook.OnHit != nil {
+			c.metricsHook.OnHit()
+		}
 		return entry.block, true
 	}
 
 	c.misses.Add(1)
+	if c.metricsHook.OnMiss != nil {
+		c.metricsHook.OnMiss()
+	}
 	return content.Block{}, false
 }
 

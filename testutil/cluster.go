@@ -22,9 +22,10 @@ type Cluster struct {
 
 // ClusterOptions allows configuring cluster nodes with specific policies.
 type ClusterOptions struct {
-	Policy      string  // path selection policy (default: "balanced")
-	Epsilon     float64 // epsilon for epsilon-greedy policy
-	DisableMDNS bool    // disable mDNS (recommended for benchmarks to avoid shutdown races)
+	Policy        string        // path selection policy (default: "balanced")
+	Epsilon       float64       // epsilon for epsilon-greedy policy
+	DisableMDNS   bool          // disable mDNS (recommended for benchmarks to avoid shutdown races)
+	ProbeInterval time.Duration // override probe interval (default: 30s; use 3-5s for benchmarks)
 }
 
 func clusterConfig(i, port int, tmpDir string) node.Config {
@@ -40,6 +41,10 @@ func clusterConfigWithOptions(i, port int, tmpDir string, opts ClusterOptions) n
 	if epsilon <= 0 {
 		epsilon = 0.1
 	}
+	probeInterval := opts.ProbeInterval
+	if probeInterval <= 0 {
+		probeInterval = 30 * time.Second
+	}
 	return node.Config{
 		ListenAddrs:    []string{fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)},
 		BootstrapPeers: nil,
@@ -52,7 +57,7 @@ func clusterConfigWithOptions(i, port int, tmpDir string, opts ClusterOptions) n
 		PathEpsilon:    epsilon,
 		CacheMaxBytes:  16 * 1024 * 1024,
 		ChunkSizeBytes: 256 * 1024,
-		ProbeInterval:  30 * time.Second,
+		ProbeInterval:  probeInterval,
 		ProbeTimeout:   3 * time.Second,
 		LogLevel:       "warn",
 	}

@@ -79,6 +79,10 @@ func (n *Node) Start(ctx context.Context) error {
 	// Initialize block cache.
 	n.BlockCache = cache.NewLRUCache(n.Cfg.CacheMaxBytes)
 	n.BlockCache.SetPinChecker(n.ContentStore)
+	n.BlockCache.SetMetricsHook(cache.MetricsHook{
+		OnHit:  func() { n.Metrics.CacheHits.Inc() },
+		OnMiss: func() { n.Metrics.CacheMisses.Inc() },
+	})
 	slog.Info("block cache initialized", "maxBytes", n.Cfg.CacheMaxBytes)
 
 	// Register block transfer handler (with cache for NDN-style relay caching).

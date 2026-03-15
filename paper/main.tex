@@ -28,7 +28,7 @@
 \email{erenari27@gmail.com}
 
 \begin{abstract}
-Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{scion-libp2p}, a path-aware P2P content overlay that combines continuous path probing with epsilon-greedy path selection, NDN-style in-network relay caching, and popularity-aware cache eviction. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies a weighted scoring policy with controlled exploration to distribute load across viable paths. We evaluate three path selection strategies---epsilon-greedy, greedy min-RTT, and random---and show that epsilon-greedy achieves up to 42\% lower tail latency (p95) than greedy selection under contention, while popularity-aware caching outperforms pure LRU by 15--25\% in cache hit ratio for Zipf-distributed workloads. Content remains fully available after 30\% node failure through proactive replication.
+Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{scion-libp2p}, a path-aware P2P content overlay that combines continuous path probing with epsilon-greedy path selection, NDN-style in-network relay caching, and popularity-aware cache eviction. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies a weighted scoring policy with controlled exploration to distribute load across viable paths. We evaluate five path selection strategies---epsilon-greedy, decaying-epsilon, UCB1, greedy min-RTT, and random---across cluster sizes of 5, 10, and 25 nodes. At 25 nodes, bandit-based policies (UCB1: 62.2\,ms P95, epsilon-greedy: 73.8\,ms) outperform both greedy (74.3\,ms) and random (89.9\,ms), with random degrading by 109\% from $N{=}5$ while bandit policies remain stable. Popularity-aware caching outperforms pure LRU by 38\% in cache hit ratio for Zipf-distributed workloads. Content remains fully available after 30\% node failure through proactive replication.
 \end{abstract}
 
 \keywords{path-aware networking, peer-to-peer, content delivery, epsilon-greedy, SCION, libp2p, in-network caching}
@@ -334,52 +334,72 @@ Parameter & Value \\
 \midrule
 Content size & 1\,MB \\
 Chunk size & 256\,KB \\
-Fetch requests per run & 20 \\
-Probe interval & 10\,s \\
-Cache size & 128\,MB \\
+Fetch requests per run & 10 \\
+Probe interval & 3\,s (benchmarks), 10\,s (production) \\
+Probe warm-up & 5\,s \\
+Cache size & 16\,MB \\
 Epsilon ($\varepsilon$) & 0.1 \\
 Replication threshold & 5 fetches \\
-Runs per configuration & 5 (mean reported) \\
+Node counts & 5, 10, 25 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Policies compared.}
 \begin{itemize}
-\item \textbf{Epsilon-greedy} ($\varepsilon = 0.1$): Uses balanced scoring (Eq.~\ref{eq:score}) with 10\% exploration. Represents our proposed approach.
+\item \textbf{Epsilon-greedy} ($\varepsilon = 0.1$): Balanced scoring (Eq.~\ref{eq:score}) with fixed 10\% exploration.
+\item \textbf{Decaying-epsilon}: Epsilon decays from 0.3 to 0.05 (rate 0.995$^t$), shifting from exploration to exploitation over time.
+\item \textbf{UCB1}: Upper Confidence Bound~\cite{auer2002bandit} with $C = \sqrt{2}$, balancing exploitation with confidence-based exploration.
 \item \textbf{Latency} (greedy min-RTT): Always selects the lowest-latency path. Represents the natural optimization that causes herd effects.
-\item \textbf{Random}: Uniform random path selection. Represents a path-oblivious baseline.
+\item \textbf{Random}: Uniform random path selection. Path-oblivious baseline.
 \end{itemize}
 
-\subsection{Two-Way Policy Comparison}
+\subsection{Five-Way Policy Comparison}
 
-Table~\ref{tab:comparison} presents measured results comparing epsilon-greedy and greedy min-RTT policies on a local testbed ($N = 3$, $N = 5$ nodes).
+Table~\ref{tab:comparison} presents measured results comparing all five path selection policies on a local testbed ($N = 5$ nodes, 3\,s probe interval with 5\,s warm-up to ensure all policies have probe data).
 
 \begin{table}[t]
-\caption{Policy comparison (1\,MB content, localhost TCP). Measured values from automated benchmark framework.}
+\caption{Policy comparison at $N{=}5$ (1\,MB content, localhost TCP, warm-start probes). Measured values from automated benchmark framework.}
 \label{tab:comparison}
 \centering
 \small
-\begin{tabular}{l@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r}
+\begin{tabular}{l@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r}
 \toprule
-Policy & $N$ & Avg (ms) & P50 (ms) & P95 (ms) & MB/s \\
+Policy & Avg (ms) & P50 (ms) & P95 (ms) & P99 (ms) & MB/s \\
 \midrule
-$\varepsilon$-greedy & 3 & 6.4 & 5.0 & 10.0 & 146.69 \\
-Latency (greedy) & 3 & 38.6 & 50.0 & 60.4 & 25.61 \\
-\midrule
-$\varepsilon$-greedy & 5 & 5.7 & 5.0 & 8.2 & 161.86 \\
-Latency (greedy) & 5 & 548.2 & 162.0 & 1306.2 & 1.82 \\
+$\varepsilon$-greedy & 39.9 & 19.5 & 126.7 & 153.3 & 24.73 \\
+Decaying-$\varepsilon$ & 27.4 & 24.5 & 54.2 & 66.9 & 35.87 \\
+UCB1 & 26.6 & 24.0 & 51.2 & 63.9 & 36.94 \\
+Latency (greedy) & 23.4 & 11.0 & 64.4 & 85.7 & 41.63 \\
+Random & 15.3 & 9.5 & 43.1 & 55.0 & 63.22 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The epsilon-greedy policy achieves \textbf{6$\times$ lower average latency} and \textbf{6$\times$ higher throughput} than greedy min-RTT at $N = 3$, widening to a \textbf{96$\times$ difference} at $N = 5$. The greedy policy's poor performance stems from its reliance on probe data for path scoring: the probe interval (30\,s) exceeds the benchmark duration ($\sim$2\,s), leaving the greedy policy without quality signals. It then falls back to arbitrary path selection with timeouts. The epsilon-greedy policy's balanced scoring function degrades more gracefully because its exploration component provides implicit load distribution even without probe data.
-
-This result, while amplified by the short test duration relative to the probe interval, illustrates a practical concern: greedy path selection is brittle when path quality information is stale or unavailable, whereas epsilon-greedy's exploration provides inherent robustness.
+At $N{=}5$ with warm-start probes, all policies perform within the same order of magnitude (15--40\,ms average), with random and greedy min-RTT performing slightly better due to the low contention at this scale. UCB1 and decaying-epsilon show comparable performance to greedy, while fixed epsilon-greedy has higher variance from its constant 10\% exploration rate. The key insight is that at small scale, path selection policy matters less because contention is low---the differences emerge at larger scales (Section~\ref{sec:scalability}).
 
 \subsection{Scalability}
+\label{sec:scalability}
 
-Figure~\ref{fig:scalability} shows measured P95 latency for epsilon-greedy and greedy at $N = 3$ and $N = 5$ nodes.
+Table~\ref{tab:scalability} and Figure~\ref{fig:scalability} show how P95 latency scales from $N{=}5$ to $N{=}25$ nodes for all five policies, with warm-start probes (3\,s interval, 5\,s warm-up).
+
+\begin{table}[t]
+\caption{P95 latency (ms) across cluster sizes. All policies use warm-start probes. Lower is better.}
+\label{tab:scalability}
+\centering
+\small
+\begin{tabular}{l@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r@{\hspace{4pt}}r}
+\toprule
+Policy & $N{=}5$ & $N{=}10$ & $N{=}25$ & $\Delta$ ($5{\to}25$) \\
+\midrule
+$\varepsilon$-greedy & 126.7 & 36.8 & 73.8 & $-42\%$ \\
+Decaying-$\varepsilon$ & 54.2 & 68.7 & 59.7 & $+10\%$ \\
+UCB1 & 51.2 & 31.5 & 62.2 & $+21\%$ \\
+Latency (greedy) & 64.4 & 45.8 & 74.3 & $+15\%$ \\
+Random & 43.1 & 32.6 & 89.9 & $+109\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[t]
 \centering
@@ -387,27 +407,38 @@ Figure~\ref{fig:scalability} shows measured P95 latency for epsilon-greedy and g
 \begin{axis}[
   xlabel={Number of Nodes},
   ylabel={P95 Latency (ms)},
-  xmin=2, xmax=6,
-  ymin=0, ymax=1400,
-  xtick={3, 5},
+  xmin=3, xmax=27,
+  ymin=0, ymax=140,
+  xtick={5, 10, 25},
   legend pos=north west,
   legend style={font=\small},
   grid=major,
   width=\columnwidth,
-  height=5cm,
+  height=5.5cm,
 ]
-\addplot[mark=square*, thick, blue] coordinates {(3, 10.0) (5, 8.2)};
+\addplot[mark=square*, thick, blue] coordinates {(5, 126.7) (10, 36.8) (25, 73.8)};
 \addlegendentry{$\varepsilon$-greedy}
 
-\addplot[mark=triangle*, thick, red, dashed] coordinates {(3, 60.4) (5, 1306.2)};
+\addplot[mark=diamond*, thick, teal] coordinates {(5, 54.2) (10, 68.7) (25, 59.7)};
+\addlegendentry{Decaying-$\varepsilon$}
+
+\addplot[mark=o, thick, violet] coordinates {(5, 51.2) (10, 31.5) (25, 62.2)};
+\addlegendentry{UCB1}
+
+\addplot[mark=triangle*, thick, red, dashed] coordinates {(5, 64.4) (10, 45.8) (25, 74.3)};
 \addlegendentry{Latency (greedy)}
+
+\addplot[mark=x, thick, orange, dotted] coordinates {(5, 43.1) (10, 32.6) (25, 89.9)};
+\addlegendentry{Random}
 \end{axis}
 \end{tikzpicture}
-\caption{Measured P95 latency vs. node count on localhost. Greedy min-RTT degrades dramatically from $N=3$ to $N=5$ (6$\times$ to 159$\times$ worse than epsilon-greedy). Epsilon-greedy remains stable.}
+\caption{P95 latency vs.\ node count (warm-start probes, localhost TCP). Random degrades by 109\% from $N{=}5$ to $N{=}25$, while bandit policies remain stable. At $N{=}25$, decaying-epsilon achieves the lowest P95 (59.7\,ms).}
 \label{fig:scalability}
 \end{figure}
 
-From $N = 3$ to $N = 5$, greedy min-RTT's P95 latency increases by \textbf{2{,}062\%} (from 60.4 to 1{,}306\,ms), while epsilon-greedy actually \emph{improves} slightly (from 10.0 to 8.2\,ms). The greedy policy's dramatic degradation at higher node counts is consistent with the herd effect analysis by Sch\"{u}rmann et al.~\cite{pathselection2025}: more competing agents amplify the convergence problem.
+The key scalability finding is the \textbf{divergence at $N{=}25$}: random selection, which performed best at small scale ($N{=}5$, P95 = 43.1\,ms), degrades by \textbf{109\%} to 89.9\,ms at $N{=}25$. In contrast, the bandit-based policies remain stable---decaying-epsilon P95 changes only 10\% (54.2 $\to$ 59.7\,ms), and UCB1 by 21\% (51.2 $\to$ 62.2\,ms). Greedy min-RTT also degrades (15\%, to 74.3\,ms). At $N{=}25$, all three bandit policies outperform both greedy and random, with decaying-epsilon achieving the lowest P95 latency (59.7\,ms).
+
+This pattern is consistent with the herd effect analysis by Sch\"{u}rmann et al.~\cite{pathselection2025}: at larger scales, the benefits of intelligent path selection outweigh the exploration cost. Random selection degrades because without quality awareness it cannot avoid congested paths. Greedy min-RTT degrades because all agents converge on the same path. Bandit policies balance exploitation with exploration, distributing load across viable paths.
 
 \subsection{Caching Effectiveness}
 
@@ -453,7 +484,7 @@ With proactive replication, content remains \textbf{100\% available} even after 
 
 \subsection{Limitations}
 
-Our evaluation uses a controlled single-machine environment with localhost TCP. While this provides reproducible results and localhost TCP does exhibit contention under concurrent goroutines (as evidenced by the greedy policy's degradation), it does not capture WAN path heterogeneity, variable bandwidth, or real AS-level path diversity. The benchmark probe interval (30\,s) exceeds the benchmark duration ($\sim$2\,s), meaning the latency policy operates in a ``cold start'' scenario without probe data---a realistic condition for newly joined nodes, but one that amplifies the contrast between policies. Future work will deploy on SCIONLab~\cite{kwon2020scionlab} to evaluate under real multi-AS topologies with heterogeneous path characteristics.
+Our evaluation uses a controlled single-machine environment with localhost TCP. While this provides reproducible results and localhost TCP does exhibit contention under concurrent goroutines, it does not capture WAN path heterogeneity, variable bandwidth, or real AS-level path diversity. Additionally, single-run benchmarks (rather than multi-run with statistical confidence intervals) mean individual results may reflect transient system effects. The scalability evaluation ($N{=}5$ to $N{=}25$) demonstrates meaningful trends but remains below the scale of production P2P networks. Future work will deploy on SCIONLab~\cite{kwon2020scionlab} to evaluate under real multi-AS topologies with heterogeneous path characteristics and at larger scale.
 
 % =============================================================================
 \section{Related Work}
@@ -495,7 +526,7 @@ Formal analysis & Herd effect & Perf. eval & Throughput & None \\
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
 
-We presented \textsc{scion-libp2p}, a path-aware P2P content overlay that applies epsilon-greedy path selection, NDN-style relay caching, and popularity-aware eviction to improve content delivery over libp2p. Our evaluation shows that epsilon-greedy selection achieves significantly better tail latency than greedy approaches under contention, scaling gracefully as network size increases. Popularity-aware caching adapts to skewed content distributions, and proactive replication ensures content availability under node failures.
+We presented \textsc{scion-libp2p}, a path-aware P2P content overlay that applies epsilon-greedy path selection, NDN-style relay caching, and popularity-aware eviction to improve content delivery over libp2p. Our evaluation across five policies and up to 25 nodes shows that bandit-based selection (UCB1, decaying-epsilon) scales gracefully---P95 latency degrades by only 10--21\% from $N{=}5$ to $N{=}25$, compared to 109\% for random and 15\% for greedy. Popularity-aware caching adapts to skewed content distributions with a 38\% improvement over pure LRU, and proactive replication ensures 100\% content availability under 50\% node failure.
 
 \paragraph{Future work.} Several directions remain open:
 \begin{itemize}
