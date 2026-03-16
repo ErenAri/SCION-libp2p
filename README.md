@@ -272,7 +272,7 @@ A background goroutine runs every 60 seconds:
 
 1. Queries the replication tracker for popular blocks (fetched 5+ times)
 2. Pushes those blocks to connected peers via the block-push protocol
-3. Records `scion_libp2p_blocks_replicated_total` metric
+3. Records `pathaware_libp2p_blocks_replicated_total` metric
 
 This ensures popular content survives publisher disconnection.
 
@@ -455,23 +455,23 @@ docker exec wan-node1 ./run-benchmark.sh
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `scion_libp2p_peers_connected` | gauge | Connected peers |
-| `scion_libp2p_relay_peers_available` | gauge | Relay-capable peers |
-| `scion_libp2p_probe_rtt_seconds` | histogram | Probe RTT by path type |
-| `scion_libp2p_probe_failures_total` | counter | Failed probes |
-| `scion_libp2p_ping_rtt_seconds` | histogram | Ping RTT by target |
-| `scion_libp2p_cache_hits_total` | counter | Cache hits |
-| `scion_libp2p_cache_misses_total` | counter | Cache misses |
-| `scion_libp2p_cache_bytes` | gauge | Cache size in bytes |
-| `scion_libp2p_block_fetch_duration_seconds` | histogram | Fetch time by source |
-| `scion_libp2p_blocks_transferred_total` | counter | Blocks by direction |
-| `scion_libp2p_content_retrievals_total` | counter | Content retrievals |
-| `scion_libp2p_path_selections_total` | counter | Selections by path type |
-| `scion_libp2p_stale_paths_pruned_total` | counter | Pruned stale paths |
-| `scion_libp2p_blocks_replicated_total` | counter | Replicated blocks |
-| `scion_libp2p_erasure_encode_seconds` | histogram | Erasure encoding time |
-| `scion_libp2p_erasure_decode_seconds` | histogram | Erasure decoding time |
-| `scion_libp2p_fragments_stored_total` | counter | Erasure fragments stored |
+| `pathaware_libp2p_peers_connected` | gauge | Connected peers |
+| `pathaware_libp2p_relay_peers_available` | gauge | Relay-capable peers |
+| `pathaware_libp2p_probe_rtt_seconds` | histogram | Probe RTT by path type |
+| `pathaware_libp2p_probe_failures_total` | counter | Failed probes |
+| `pathaware_libp2p_ping_rtt_seconds` | histogram | Ping RTT by target |
+| `pathaware_libp2p_cache_hits_total` | counter | Cache hits |
+| `pathaware_libp2p_cache_misses_total` | counter | Cache misses |
+| `pathaware_libp2p_cache_bytes` | gauge | Cache size in bytes |
+| `pathaware_libp2p_block_fetch_duration_seconds` | histogram | Fetch time by source |
+| `pathaware_libp2p_blocks_transferred_total` | counter | Blocks by direction |
+| `pathaware_libp2p_content_retrievals_total` | counter | Content retrievals |
+| `pathaware_libp2p_path_selections_total` | counter | Selections by path type |
+| `pathaware_libp2p_stale_paths_pruned_total` | counter | Pruned stale paths |
+| `pathaware_libp2p_blocks_replicated_total` | counter | Replicated blocks |
+| `pathaware_libp2p_erasure_encode_seconds` | histogram | Erasure encoding time |
+| `pathaware_libp2p_erasure_decode_seconds` | histogram | Erasure decoding time |
+| `pathaware_libp2p_fragments_stored_total` | counter | Erasure fragments stored |
 
 ### Grafana Dashboard
 

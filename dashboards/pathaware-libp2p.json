@@ -13,7 +13,7 @@
       "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "scion_libp2p_peers_connected",
+          "expr": "pathaware_libp2p_peers_connected",
           "legendFormat": "peers",
           "refId": "A"
         }
@@ -36,7 +36,7 @@
       "gridPos": { "h": 6, "w": 8, "x": 4, "y": 0 },
       "targets": [
         {
-          "expr": "rate(scion_libp2p_content_retrievals_total[1m])",
+          "expr": "rate(pathaware_libp2p_content_retrievals_total[1m])",
           "legendFormat": "retrievals/s",
           "refId": "A"
         }
@@ -48,7 +48,7 @@
       "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "scion_libp2p_cache_hits_total / (scion_libp2p_cache_hits_total + scion_libp2p_cache_misses_total)",
+          "expr": "pathaware_libp2p_cache_hits_total / (pathaware_libp2p_cache_hits_total + pathaware_libp2p_cache_misses_total)",
           "legendFormat": "hit ratio",
           "refId": "A"
         }
@@ -74,7 +74,7 @@
       "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
       "targets": [
         {
-          "expr": "scion_libp2p_blocks_replicated_total",
+          "expr": "pathaware_libp2p_blocks_replicated_total",
           "legendFormat": "total",
           "refId": "A"
         }
@@ -86,7 +86,7 @@
       "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 },
       "targets": [
         {
-          "expr": "scion_libp2p_cache_bytes",
+          "expr": "pathaware_libp2p_cache_bytes",
           "legendFormat": "bytes",
           "refId": "A"
         }
@@ -99,22 +99,22 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"direct\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(pathaware_libp2p_probe_rtt_seconds_bucket{path_type=\"direct\"}[5m]))",
           "legendFormat": "direct p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"direct\"}[5m]))",
+          "expr": "histogram_quantile(0.95, rate(pathaware_libp2p_probe_rtt_seconds_bucket{path_type=\"direct\"}[5m]))",
           "legendFormat": "direct p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.50, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"relay\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(pathaware_libp2p_probe_rtt_seconds_bucket{path_type=\"relay\"}[5m]))",
           "legendFormat": "relay p50",
           "refId": "C"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type=\"relay\"}[5m]))",
+          "expr": "histogram_quantile(0.95, rate(pathaware_libp2p_probe_rtt_seconds_bucket{path_type=\"relay\"}[5m]))",
           "legendFormat": "relay p95",
           "refId": "D"
         }
@@ -127,17 +127,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source=\"local\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(pathaware_libp2p_block_fetch_duration_seconds_bucket{source=\"local\"}[5m]))",
           "legendFormat": "local p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source=\"cache\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(pathaware_libp2p_block_fetch_duration_seconds_bucket{source=\"cache\"}[5m]))",
           "legendFormat": "cache p50",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source=\"network\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(pathaware_libp2p_block_fetch_duration_seconds_bucket{source=\"network\"}[5m]))",
           "legendFormat": "network p50",
           "refId": "C"
         }
@@ -150,7 +150,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
       "targets": [
         {
-          "expr": "scion_libp2p_path_selections_total",
+          "expr": "pathaware_libp2p_path_selections_total",
           "legendFormat": "{{path_type}}",
           "refId": "A"
         }
@@ -162,12 +162,12 @@
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
       "targets": [
         {
-          "expr": "rate(scion_libp2p_blocks_transferred_total{direction=\"sent\"}[1m])",
+          "expr": "rate(pathaware_libp2p_blocks_transferred_total{direction=\"sent\"}[1m])",
           "legendFormat": "sent/s",
           "refId": "A"
         },
         {
-          "expr": "rate(scion_libp2p_blocks_transferred_total{direction=\"received\"}[1m])",
+          "expr": "rate(pathaware_libp2p_blocks_transferred_total{direction=\"received\"}[1m])",
           "legendFormat": "received/s",
           "refId": "B"
         }
@@ -179,12 +179,12 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
       "targets": [
         {
-          "expr": "rate(scion_libp2p_probe_failures_total[5m])",
+          "expr": "rate(pathaware_libp2p_probe_failures_total[5m])",
           "legendFormat": "failures/s",
           "refId": "A"
         },
         {
-          "expr": "rate(scion_libp2p_stale_paths_pruned_total[5m])",
+          "expr": "rate(pathaware_libp2p_stale_paths_pruned_total[5m])",
           "legendFormat": "stale pruned/s",
           "refId": "B"
         }
@@ -196,7 +196,7 @@
       "gridPos": { "h": 6, "w": 4, "x": 0, "y": 22 },
       "targets": [
         {
-          "expr": "scion_libp2p_relay_peers_available",
+          "expr": "pathaware_libp2p_relay_peers_available",
           "legendFormat": "relays",
           "refId": "A"
         }

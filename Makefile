@@ -26,7 +26,7 @@ clean:
 	rm -f $(BINARY)
 
 proto:
-	protoc --go_out=. --go_opt=paths=source_relative proto/scionlibp2p.proto
+	protoc --go_out=. --go_opt=paths=source_relative proto/pathaware_libp2p.proto
 
 # --- Benchmarks ---
 

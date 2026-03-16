@@ -39,7 +39,7 @@ echo "Created 1MB test file: $TMPFILE"
 # Note: In Docker, the publish endpoint expects a file path inside the container.
 # For a real benchmark, you'd docker cp the file in or mount a volume.
 echo "To run a full benchmark, use:"
-echo "  docker exec scion-node1 pathaware-libp2p bench --experiment compare --nodes 5"
+echo "  docker exec pathaware-node1 pathaware-libp2p bench --experiment compare --nodes 5"
 echo ""
 
 # Show latency distribution from paths.

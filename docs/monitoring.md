@@ -105,27 +105,27 @@ The Grafana dashboard (`dashboards/pathaware-libp2p.json`) contains 10 panels:
 
 **Cache hit ratio:**
 ```promql
-scion_libp2p_cache_hits_total / (scion_libp2p_cache_hits_total + scion_libp2p_cache_misses_total)
+pathaware_libp2p_cache_hits_total / (pathaware_libp2p_cache_hits_total + pathaware_libp2p_cache_misses_total)
 ```
 
 **Path RTT p50 (direct):**
 ```promql
-histogram_quantile(0.50, rate(scion_libp2p_probe_rtt_seconds_bucket{path_type="direct"}[5m]))
+histogram_quantile(0.50, rate(pathaware_libp2p_probe_rtt_seconds_bucket{path_type="direct"}[5m]))
 ```
 
 **Block fetch latency p50 (network):**
 ```promql
-histogram_quantile(0.50, rate(scion_libp2p_block_fetch_duration_seconds_bucket{source="network"}[5m]))
+histogram_quantile(0.50, rate(pathaware_libp2p_block_fetch_duration_seconds_bucket{source="network"}[5m]))
 ```
 
 **Content retrieval rate:**
 ```promql
-rate(scion_libp2p_content_retrievals_total[1m])
+rate(pathaware_libp2p_content_retrievals_total[1m])
 ```
 
 ## Metrics Reference
 
-### Application Metrics (scion_libp2p_*)
+### Application Metrics (pathaware_libp2p_*)
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -170,19 +170,19 @@ groups:
   - name: pathaware-libp2p
     rules:
       - alert: NoPeersConnected
-        expr: scion_libp2p_peers_connected == 0
+        expr: pathaware_libp2p_peers_connected == 0
         for: 5m
         annotations:
           summary: "Node has no connected peers for 5 minutes"
 
       - alert: HighProbeFailureRate
-        expr: rate(scion_libp2p_probe_failures_total[5m]) > 0.5
+        expr: rate(pathaware_libp2p_probe_failures_total[5m]) > 0.5
         for: 2m
         annotations:
           summary: "Probe failure rate exceeds 50%"
 
       - alert: CacheFullNoEviction
-        expr: scion_libp2p_cache_bytes / 134217728 > 0.95
+        expr: pathaware_libp2p_cache_bytes / 134217728 > 0.95
         for: 10m
         annotations:
           summary: "Cache is above 95% capacity"

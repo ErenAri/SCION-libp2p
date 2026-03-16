@@ -19,7 +19,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: scion-node1
+    container_name: pathaware-node1
     cap_add:
       - NET_ADMIN
     environment:
@@ -31,13 +31,13 @@ services:
     ports:
       - "9090:9090"
     networks:
-      - scion-wan
+      - pathaware-wan
 
   node2:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: scion-node2
+    container_name: pathaware-node2
     cap_add:
       - NET_ADMIN
     environment:
@@ -52,13 +52,13 @@ services:
     depends_on:
       - node1
     networks:
-      - scion-wan
+      - pathaware-wan
 
   node3:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: scion-node3
+    container_name: pathaware-node3
     cap_add:
       - NET_ADMIN
     environment:
@@ -74,13 +74,13 @@ services:
     depends_on:
       - node1
     networks:
-      - scion-wan
+      - pathaware-wan
 
   node4:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: scion-node4
+    container_name: pathaware-node4
     cap_add:
       - NET_ADMIN
     environment:
@@ -96,13 +96,13 @@ services:
     depends_on:
       - node1
     networks:
-      - scion-wan
+      - pathaware-wan
 
   node5:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: scion-node5
+    container_name: pathaware-node5
     cap_add:
       - NET_ADMIN
     environment:
@@ -118,8 +118,8 @@ services:
     depends_on:
       - node1
     networks:
-      - scion-wan
+      - pathaware-wan
 
 networks:
-  scion-wan:
+  pathaware-wan:
     driver: bridge
