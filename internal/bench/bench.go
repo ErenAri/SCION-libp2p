@@ -407,19 +407,40 @@ func runCacheBench(cfg Config) (*CacheResult, error) {
 	}
 	defer cleanup()
 
-	testData := generateTestData(cfg.ContentSize)
-	_, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
-	if err != nil {
-		return nil, fmt.Errorf("publish: %w", err)
+	// Publish multiple content items to create cache pressure.
+	// Use 8 items so they compete for cache space.
+	numItems := 8
+	type item struct {
+		cids []string
+	}
+	var items []item
+	for i := 0; i < numItems; i++ {
+		testData := generateTestData(cfg.ContentSize / numItems)
+		_, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
+		if err != nil {
+			return nil, fmt.Errorf("publish item %d: %w", i, err)
+		}
+		items = append(items, item{cids: manifest.ChunkCIDs})
 	}
 
 	ctx := context.Background()
 	publisherID := cluster.Nodes[0].Host.ID()
 
-	// Fetch all blocks twice — second time should hit cache.
-	for round := 0; round < 2; round++ {
-		fetcherHost := cluster.Nodes[1].Host
-		for _, cid := range manifest.ChunkCIDs {
+	// Zipf-distributed access: popular items fetched more often.
+	// alpha=1.0 models typical content popularity.
+	rng := rand.New(rand.NewSource(42))
+	zipf := rand.NewZipf(rng, 1.5, 1.0, uint64(numItems-1))
+
+	numRequests := cfg.Requests
+	if numRequests < 20 {
+		numRequests = 50
+	}
+
+	for r := 0; r < numRequests; r++ {
+		itemIdx := int(zipf.Uint64())
+		fetcherIdx := (r % (cfg.NodeCount - 1)) + 1
+		fetcherHost := cluster.Nodes[fetcherIdx].Host
+		for _, cid := range items[itemIdx].cids {
 			protocol.FetchBlock(ctx, fetcherHost, publisherID, cid)
 		}
 	}

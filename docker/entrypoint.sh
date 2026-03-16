@@ -15,5 +15,26 @@ if [ -n "$LATENCY_MS" ] || [ -n "$LOSS_PCT" ]; then
     tc qdisc change dev eth0 root netem delay ${DELAY} ${JITTER} loss ${LOSS}
 fi
 
+# If BOOTSTRAP_HOST is set, wait for it and discover its peer ID via API.
+if [ -n "$BOOTSTRAP_HOST" ]; then
+    echo "Waiting for bootstrap node at ${BOOTSTRAP_HOST}..."
+    for i in $(seq 1 30); do
+        PEER_ID=$(curl -sf "http://${BOOTSTRAP_HOST}:9090/api/v1/status" 2>/dev/null | jq -r '.peer_id // empty' 2>/dev/null) || true
+        if [ -n "$PEER_ID" ]; then
+            BOOTSTRAP_ADDR="/dns4/${BOOTSTRAP_HOST}/tcp/9000/p2p/${PEER_ID}"
+            echo "Discovered bootstrap peer: ${BOOTSTRAP_ADDR}"
+            break
+        fi
+        sleep 1
+    done
+    if [ -z "$PEER_ID" ]; then
+        echo "WARNING: Could not discover bootstrap peer, starting without bootstrap"
+    fi
+fi
+
 # Start the daemon with provided arguments.
-exec scion-libp2p daemon "$@"
+if [ -n "$BOOTSTRAP_ADDR" ]; then
+    exec scion-libp2p daemon "$@" --bootstrap "$BOOTSTRAP_ADDR"
+else
+    exec scion-libp2p daemon "$@"
+fi

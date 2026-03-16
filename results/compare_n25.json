@@ -1,0 +1,96 @@
+{
+  "configs": [
+    {
+      "policy": "epsilon-greedy",
+      "epsilon": 0.1,
+      "node_count": 25,
+      "avg_latency_ms": 6.346666666666667,
+      "p50_latency_ms": 6,
+      "p95_latency_ms": 10.35,
+      "p99_latency_ms": 12.703333333333353,
+      "throughput_mbs": 146.58826522905073,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.8721338636194907,
+      "stddev_lat_ms": 0.36350149013908195
+    },
+    {
+      "policy": "decaying-epsilon",
+      "node_count": 25,
+      "avg_latency_ms": 6.69,
+      "p50_latency_ms": 6,
+      "p95_latency_ms": 12.049999999999997,
+      "p99_latency_ms": 15.676666666666671,
+      "throughput_mbs": 139.98946563964316,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.8447610644308238,
+      "stddev_lat_ms": 0.12767145334803703
+    },
+    {
+      "policy": "ucb1",
+      "node_count": 25,
+      "avg_latency_ms": 6.593333333333334,
+      "p50_latency_ms": 6.333333333333333,
+      "p95_latency_ms": 11.683333333333332,
+      "p99_latency_ms": 16.680000000000007,
+      "throughput_mbs": 143.40053318828487,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.8486011243331468,
+      "stddev_lat_ms": 0.900129620295507
+    },
+    {
+      "policy": "thompson",
+      "node_count": 25,
+      "avg_latency_ms": 5.8933333333333335,
+      "p50_latency_ms": 5.666666666666667,
+      "p95_latency_ms": 11.35,
+      "p99_latency_ms": 14.050000000000026,
+      "throughput_mbs": 160.3105013028007,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.7563630525763102,
+      "stddev_lat_ms": 0.7557997971244328
+    },
+    {
+      "policy": "contextual",
+      "node_count": 25,
+      "avg_latency_ms": 7.463333333333334,
+      "p50_latency_ms": 7.333333333333333,
+      "p95_latency_ms": 16.03333333333333,
+      "p99_latency_ms": 19.696666666666683,
+      "throughput_mbs": 131.50802504588165,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.7409688018902001,
+      "stddev_lat_ms": 1.8499819818942385
+    },
+    {
+      "policy": "latency",
+      "node_count": 25,
+      "avg_latency_ms": 7.47,
+      "p50_latency_ms": 7.333333333333333,
+      "p95_latency_ms": 14.733333333333329,
+      "p99_latency_ms": 19.02666666666668,
+      "throughput_mbs": 127.2475878885623,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.7450309901480439,
+      "stddev_lat_ms": 0.20297783130184463
+    },
+    {
+      "policy": "random",
+      "node_count": 25,
+      "avg_latency_ms": 6.223333333333334,
+      "p50_latency_ms": 6,
+      "p95_latency_ms": 13.049999999999997,
+      "p99_latency_ms": 20.68333333333334,
+      "throughput_mbs": 156.57420068218116,
+      "cache_hit_ratio": 0.9899999999999999,
+      "availability": 1,
+      "fairness_index": 0.6594992246684555,
+      "stddev_lat_ms": 1.6599497984376919
+    }
+  ]
+}

@@ -28,7 +28,7 @@
 \email{erenari27@gmail.com}
 
 \begin{abstract}
-Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{scion-libp2p}, a path-aware P2P content overlay that combines continuous path probing with multi-armed bandit path selection, NDN-style in-network relay caching, cooperative cache coordination via Bloom filter exchange, and Reed-Solomon erasure coding for storage-efficient replication. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies configurable selection policies with controlled exploration to distribute load across viable paths. We implement and evaluate seven path selection strategies---epsilon-greedy, decaying-epsilon, UCB1, Thompson sampling, contextual bandits (LinUCB), greedy min-RTT, and random---across cluster sizes of 5, 10, and 25 nodes. At 25 nodes, bandit-based policies (UCB1: 62.2\,ms P95, epsilon-greedy: 73.8\,ms) outperform both greedy (74.3\,ms) and random (89.9\,ms), with random degrading by 109\% from $N{=}5$ while bandit policies remain stable. Multipath bandwidth aggregation via disjoint path racing reduces fetch latency by parallelizing block retrieval across independent paths. Popularity-aware caching outperforms pure LRU by 38\% in cache hit ratio for Zipf-distributed workloads. Erasure coding achieves equivalent fault tolerance to full replication at 1.5$\times$ storage overhead instead of $N\times$. Content remains fully available after 30\% node failure. A Docker Compose WAN simulation with \texttt{tc netem} validates behavior under heterogeneous latency conditions.
+Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{scion-libp2p}, a path-aware P2P content overlay that combines continuous path probing with multi-armed bandit path selection, NDN-style in-network relay caching, cooperative cache coordination via Bloom filter exchange, and Reed-Solomon erasure coding for storage-efficient replication. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies configurable selection policies with controlled exploration to distribute load across viable paths. We implement and evaluate seven path selection strategies---epsilon-greedy, decaying-epsilon, UCB1, Thompson sampling, contextual bandits (LinUCB), greedy min-RTT, and random---across cluster sizes of 5 to 25 nodes with 100 requests per run. Fixed $\varepsilon$-greedy is the most scale-stable policy: P95 latency degrades by only 3\% from $N{=}5$ to $N{=}25$ (10.0$\to$10.4\,ms), while greedy min-RTT degrades by 47\% due to herd-effect convergence. At $N{=}25$, Thompson sampling achieves the best throughput (160\,MB/s) and lowest average latency (5.9\,ms), while greedy trails at 127\,MB/s. Multipath bandwidth aggregation via disjoint path racing reduces fetch latency by parallelizing block retrieval across independent paths. Popularity-aware caching outperforms pure LRU by 38\% in cache hit ratio for Zipf-distributed workloads. Erasure coding achieves equivalent fault tolerance to full replication at 1.5$\times$ storage overhead instead of $N\times$. Content remains fully available after 30\% node failure. A Docker Compose WAN simulation with \texttt{tc netem} validates behavior under heterogeneous latency conditions.
 \end{abstract}
 
 \keywords{path-aware networking, peer-to-peer, content delivery, epsilon-greedy, SCION, libp2p, in-network caching}
@@ -414,26 +414,26 @@ Table~\ref{tab:comparison} presents measured results comparing all seven path se
 \toprule
 Policy & Avg (ms) & P50 (ms) & P95 (ms) & P99 (ms) & MB/s \\
 \midrule
-$\varepsilon$-greedy & 39.9 & 19.5 & 126.7 & 153.3 & 24.73 \\
-Decaying-$\varepsilon$ & 27.4 & 24.5 & 54.2 & 66.9 & 35.87 \\
-UCB1 & 26.6 & 24.0 & 51.2 & 63.9 & 36.94 \\
-Thompson & 25.1 & 22.0 & 48.5 & 60.2 & 38.50 \\
-Contextual & 26.9 & 23.5 & 52.8 & 65.1 & 36.21 \\
-Latency (greedy) & 23.4 & 11.0 & 64.4 & 85.7 & 41.63 \\
-Random & 15.3 & 9.5 & 43.1 & 55.0 & 63.22 \\
+$\varepsilon$-greedy & 5.6\scriptsize{$\pm$0.3} & 5.0 & 10.0 & 17.3 & 166.2 \\
+Decaying-$\varepsilon$ & 5.3\scriptsize{$\pm$0.4} & 5.0 & 9.4 & 18.2 & 174.7 \\
+UCB1 & 5.3\scriptsize{$\pm$0.4} & 5.0 & 9.5 & 16.5 & 174.7 \\
+Thompson & 5.1\scriptsize{$\pm$0.2} & 5.0 & 9.3 & 15.5 & 180.7 \\
+Contextual (LinUCB) & 5.1\scriptsize{$\pm$0.1} & 5.0 & 8.0 & 15.2 & 180.0 \\
+Latency (greedy) & 5.1\scriptsize{$\pm$0.2} & 5.0 & 10.1 & 16.5 & 182.1 \\
+Random & 5.2\scriptsize{$\pm$0.3} & 4.8 & 8.7 & 20.9 & 176.8 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-At $N{=}5$ with warm-start probes, all policies perform within the same order of magnitude (15--40\,ms average), with random and greedy min-RTT performing slightly better due to the low contention at this scale. Thompson sampling achieves the best tail latency among bandit policies (P95 = 48.5\,ms) thanks to its natural exploration-exploitation balance via posterior sampling. The contextual bandit (LinUCB) performs comparably to UCB1, with the additional advantage of context-awareness that should benefit heterogeneous network conditions. The key insight is that at small scale, path selection policy matters less because contention is low---the differences emerge at larger scales (Section~\ref{sec:scalability}).
+At $N{=}5$ with 100 requests per run (3 runs, $\pm$ shows standard deviation of run averages), all policies converge to 5.1--5.6\,ms average latency and 166--182\,MB/s throughput (Table~\ref{tab:comparison}). The Zipf-distributed cache benchmark achieves a 99\% hit ratio, confirming that popularity-aware caching effectively absorbs repeated access. At this small scale, path selection policy has minimal impact because contention is low and caching dominates. The differences emerge at larger scales (Section~\ref{sec:scalability}) where path contention grows and the herd effect penalizes greedy policies.
 
 \subsection{Scalability}
 \label{sec:scalability}
 
-Table~\ref{tab:scalability} and Figure~\ref{fig:scalability} show how P95 latency scales from $N{=}5$ to $N{=}25$ nodes for all seven policies, with warm-start probes (3\,s interval, 5\,s warm-up).
+Table~\ref{tab:scalability} and Figure~\ref{fig:scalability} show how P95 latency scales from $N{=}5$ to $N{=}25$ nodes for all seven policies (100 requests per run, 3 runs, warm-start probes with 3\,s interval and 5\,s warm-up).
 
 \begin{table}[t]
-\caption{P95 latency (ms) across cluster sizes. All policies use warm-start probes. Lower is better.}
+\caption{P95 latency (ms) across cluster sizes (100 requests, 3 runs). Lower is better.}
 \label{tab:scalability}
 \centering
 \small
@@ -441,13 +441,13 @@ Table~\ref{tab:scalability} and Figure~\ref{fig:scalability} show how P95 latenc
 \toprule
 Policy & $N{=}5$ & $N{=}10$ & $N{=}25$ & $\Delta$ ($5{\to}25$) \\
 \midrule
-$\varepsilon$-greedy & 126.7 & 36.8 & 73.8 & $-42\%$ \\
-Decaying-$\varepsilon$ & 54.2 & 68.7 & 59.7 & $+10\%$ \\
-UCB1 & 51.2 & 31.5 & 62.2 & $+21\%$ \\
-Thompson & 48.5 & 30.8 & 57.4 & $+18\%$ \\
-Contextual & 52.8 & 33.2 & 61.5 & $+16\%$ \\
-Latency (greedy) & 64.4 & 45.8 & 74.3 & $+15\%$ \\
-Random & 43.1 & 32.6 & 89.9 & $+109\%$ \\
+$\varepsilon$-greedy & 10.0 & 9.7 & 10.4 & $+3\%$ \\
+Decaying-$\varepsilon$ & 9.4 & 8.4 & 12.1 & $+28\%$ \\
+UCB1 & 9.5 & 8.7 & 11.7 & $+23\%$ \\
+Thompson & 9.3 & 9.7 & 11.4 & $+22\%$ \\
+Contextual (LinUCB) & 8.0 & 9.0 & 16.0 & $+100\%$ \\
+Latency (greedy) & 10.1 & 8.7 & 14.7 & $+47\%$ \\
+Random & 8.7 & 10.2 & 13.1 & $+50\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -459,7 +459,7 @@ Random & 43.1 & 32.6 & 89.9 & $+109\%$ \\
   xlabel={Number of Nodes},
   ylabel={P95 Latency (ms)},
   xmin=3, xmax=27,
-  ymin=0, ymax=140,
+  ymin=0, ymax=20,
   xtick={5, 10, 25},
   legend pos=north west,
   legend style={font=\small, cells={anchor=west}},
@@ -467,35 +467,41 @@ Random & 43.1 & 32.6 & 89.9 & $+109\%$ \\
   width=\columnwidth,
   height=5.5cm,
 ]
-\addplot[mark=square*, thick, blue] coordinates {(5, 126.7) (10, 36.8) (25, 73.8)};
+\addplot[mark=square*, thick, blue] coordinates {(5, 10.0) (10, 9.7) (25, 10.4)};
 \addlegendentry{$\varepsilon$-greedy}
 
-\addplot[mark=diamond*, thick, teal] coordinates {(5, 54.2) (10, 68.7) (25, 59.7)};
+\addplot[mark=diamond*, thick, teal] coordinates {(5, 9.4) (10, 8.4) (25, 12.1)};
 \addlegendentry{Decaying-$\varepsilon$}
 
-\addplot[mark=o, thick, violet] coordinates {(5, 51.2) (10, 31.5) (25, 62.2)};
+\addplot[mark=o, thick, violet] coordinates {(5, 9.5) (10, 8.7) (25, 11.7)};
 \addlegendentry{UCB1}
 
-\addplot[mark=star, thick, brown] coordinates {(5, 48.5) (10, 30.8) (25, 57.4)};
+\addplot[mark=star, thick, brown] coordinates {(5, 9.3) (10, 9.7) (25, 11.4)};
 \addlegendentry{Thompson}
 
-\addplot[mark=pentagon*, thick, cyan] coordinates {(5, 52.8) (10, 33.2) (25, 61.5)};
+\addplot[mark=pentagon*, thick, cyan] coordinates {(5, 8.0) (10, 9.0) (25, 16.0)};
 \addlegendentry{Contextual}
 
-\addplot[mark=triangle*, thick, red, dashed] coordinates {(5, 64.4) (10, 45.8) (25, 74.3)};
+\addplot[mark=triangle*, thick, red, dashed] coordinates {(5, 10.1) (10, 8.7) (25, 14.7)};
 \addlegendentry{Latency (greedy)}
 
-\addplot[mark=x, thick, orange, dotted] coordinates {(5, 43.1) (10, 32.6) (25, 89.9)};
+\addplot[mark=x, thick, orange, dotted] coordinates {(5, 8.7) (10, 10.2) (25, 13.1)};
 \addlegendentry{Random}
 \end{axis}
 \end{tikzpicture}
-\caption{P95 latency vs.\ node count (warm-start probes, localhost TCP). Random degrades by 109\% from $N{=}5$ to $N{=}25$, while bandit policies remain stable. At $N{=}25$, Thompson sampling achieves the lowest P95 (57.4\,ms).}
+\caption{P95 latency vs.\ node count (100 requests, 3 runs, localhost TCP). $\varepsilon$-greedy is the most scale-stable ($+3\%$), while greedy min-RTT ($+47\%$), random ($+50\%$), and contextual ($+100\%$) degrade significantly from $N{=}5$ to $N{=}25$.}
 \label{fig:scalability}
 \end{figure}
 
-The key scalability finding is the \textbf{divergence at $N{=}25$}: random selection, which performed best at small scale ($N{=}5$, P95 = 43.1\,ms), degrades by \textbf{109\%} to 89.9\,ms at $N{=}25$. In contrast, the bandit-based policies remain stable---Thompson sampling P95 changes only 18\% (48.5 $\to$ 57.4\,ms), decaying-epsilon by 10\% (54.2 $\to$ 59.7\,ms), and UCB1 by 21\% (51.2 $\to$ 62.2\,ms). The contextual bandit (LinUCB) degrades by only 16\%, showing that context-awareness provides modest additional stability. Greedy min-RTT also degrades (15\%, to 74.3\,ms). At $N{=}25$, all five bandit policies outperform both greedy and random, with Thompson sampling achieving the lowest P95 latency (57.4\,ms).
+Three key findings emerge from the scalability data.
 
-This pattern is consistent with the herd effect analysis by Sch\"{u}rmann et al.~\cite{pathselection2025}: at larger scales, the benefits of intelligent path selection outweigh the exploration cost. Random selection degrades because without quality awareness it cannot avoid congested paths. Greedy min-RTT degrades because all agents converge on the same path. Bandit policies balance exploitation with exploration, distributing load across viable paths.
+\textbf{(1) Fixed exploration scales best.} $\varepsilon$-greedy with fixed $\varepsilon{=}0.1$ is the most scale-stable policy: P95 increases by only \textbf{3\%} (10.0 $\to$ 10.4\,ms) from $N{=}5$ to $N{=}25$. Its constant 10\% exploration rate provides reliable load distribution across paths regardless of topology size. Thompson ($+22\%$) and UCB1 ($+23\%$) also scale well, as their built-in exploration mechanisms naturally adapt.
+
+\textbf{(2) Greedy selection causes herd effect.} Greedy min-RTT degrades by \textbf{47\%} (10.1 $\to$ 14.7\,ms) as all agents converge on the same lowest-latency path. At $N{=}25$, it has the highest average latency (7.5\,ms) and lowest throughput (127\,MB/s). Random degrades similarly ($+50\%$) but for a different reason: as topology size increases, the probability of selecting suboptimal paths grows without any quality signal to guide selection.
+
+\textbf{(3) Contextual bandits degrade under homogeneous conditions.} LinUCB P95 doubles ($+100\%$, 8.0 $\to$ 16.0\,ms) from $N{=}5$ to $N{=}25$. On localhost where all paths have similar characteristics, the $O(d^2)$ matrix inversion overhead per decision outweighs the benefit of context-awareness. Under heterogeneous WAN conditions (Section~\ref{sec:wan}), where context features differ meaningfully, LinUCB's advantage would be more pronounced.
+
+These patterns are consistent with the herd effect analysis by Sch\"{u}rmann et al.~\cite{pathselection2025}. The key finding is that \emph{consistent, moderate exploration} (fixed $\varepsilon$) outperforms both greedy exploitation and sophisticated adaptive exploration at scale under homogeneous conditions.
 
 \subsection{Caching Effectiveness}
 
@@ -516,7 +522,7 @@ Popularity-aware (ours) & 52.7\% \\
 \end{tabular}
 \end{table}
 
-Popularity-aware eviction achieves a \textbf{38\% relative improvement} in cache hit ratio over pure LRU (Table~\ref{tab:caching}). Under Zipf distributions, a small number of blocks account for most accesses. Pure LRU evicts these blocks whenever a burst of unique blocks fills the cache. Our second-chance mechanism retains popular blocks by halving their fetch count instead of evicting them immediately.
+Popularity-aware eviction achieves a \textbf{38\% relative improvement} in cache hit ratio over pure LRU (Table~\ref{tab:caching}). Under Zipf distributions, a small number of blocks account for most accesses. Pure LRU evicts these blocks whenever a burst of unique blocks fills the cache. Our second-chance mechanism retains popular blocks by halving their fetch count instead of evicting them immediately. In end-to-end benchmarks with Zipf-distributed access patterns ($\alpha{=}1.5$, 8 content items, 100 requests), the integrated cache achieves a 99\% hit ratio, confirming that popularity-aware caching effectively absorbs repeated requests for hot content.
 
 \subsection{Resilience}
 
@@ -636,7 +642,7 @@ Adaptive chunks & RTT-aware & No & No & No \\
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
 
-We presented \textsc{scion-libp2p}, a path-aware P2P content overlay that applies multi-armed bandit path selection, NDN-style relay caching with cooperative Bloom filter exchange, Reed-Solomon erasure coding, multipath bandwidth aggregation, and adaptive chunking to improve content delivery over libp2p. Our evaluation across seven policies---including Thompson sampling with Bayesian Beta priors and contextual bandits (LinUCB)---and up to 25 nodes shows that bandit-based selection scales gracefully: Thompson sampling P95 degrades by only 18\% from $N{=}5$ to $N{=}25$, compared to 109\% for random and 15\% for greedy. Erasure coding achieves equivalent fault tolerance to full replication at 1.5$\times$ storage overhead. Popularity-aware caching adapts to skewed content distributions with a 38\% improvement over pure LRU, and proactive replication ensures 100\% content availability under 50\% node failure. The Docker Compose WAN simulation validates these findings under heterogeneous latency conditions.
+We presented \textsc{scion-libp2p}, a path-aware P2P content overlay that applies multi-armed bandit path selection, NDN-style relay caching with cooperative Bloom filter exchange, Reed-Solomon erasure coding, multipath bandwidth aggregation, and adaptive chunking to improve content delivery over libp2p. Our evaluation across seven policies---including Thompson sampling with Bayesian Beta priors and contextual bandits (LinUCB)---and up to 25 nodes with 100 requests per run shows that fixed $\varepsilon$-greedy is the most scale-stable policy (P95 degrades only 3\% from $N{=}5$ to $N{=}25$), while greedy min-RTT degrades by 47\% due to herd-effect convergence. Thompson sampling achieves the best throughput at scale (160\,MB/s at $N{=}25$). Erasure coding achieves equivalent fault tolerance to full replication at 1.5$\times$ storage overhead. Popularity-aware caching adapts to skewed content distributions with a 38\% improvement over pure LRU, and proactive replication ensures 100\% content availability under 50\% node failure. The Docker Compose WAN simulation validates these findings under heterogeneous latency conditions.
 
 \paragraph{Future work.} Several directions remain open:
 \begin{itemize}

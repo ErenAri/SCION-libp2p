@@ -26,7 +26,7 @@ services:
       - NODE_NAME=publisher
     command: >
       --listen /ip4/0.0.0.0/tcp/9000
-      --api 0.0.0.0:9090
+      --api-addr 0.0.0.0:9090
       --policy epsilon-greedy
     ports:
       - "9090:9090"
@@ -44,10 +44,10 @@ services:
       - NODE_NAME=nearby
       - LATENCY_MS=5
       - JITTER_MS=1
+      - BOOTSTRAP_HOST=node1
     command: >
       --listen /ip4/0.0.0.0/tcp/9000
-      --api 0.0.0.0:9090
-      --bootstrap /dns4/node1/tcp/9000
+      --api-addr 0.0.0.0:9090
       --policy epsilon-greedy
     depends_on:
       - node1
@@ -66,10 +66,10 @@ services:
       - LATENCY_MS=50
       - LOSS_PCT=1
       - JITTER_MS=10
+      - BOOTSTRAP_HOST=node1
     command: >
       --listen /ip4/0.0.0.0/tcp/9000
-      --api 0.0.0.0:9090
-      --bootstrap /dns4/node1/tcp/9000
+      --api-addr 0.0.0.0:9090
       --policy epsilon-greedy
     depends_on:
       - node1
@@ -87,12 +87,12 @@ services:
       - NODE_NAME=relay
       - LATENCY_MS=20
       - JITTER_MS=5
+      - BOOTSTRAP_HOST=node1
     command: >
       --listen /ip4/0.0.0.0/tcp/9000
-      --api 0.0.0.0:9090
-      --bootstrap /dns4/node1/tcp/9000
+      --api-addr 0.0.0.0:9090
       --policy epsilon-greedy
-      --relay
+      --enable-relay
     depends_on:
       - node1
     networks:
@@ -110,10 +110,10 @@ services:
       - LATENCY_MS=100
       - LOSS_PCT=2
       - JITTER_MS=20
+      - BOOTSTRAP_HOST=node1
     command: >
       --listen /ip4/0.0.0.0/tcp/9000
-      --api 0.0.0.0:9090
-      --bootstrap /dns4/node1/tcp/9000
+      --api-addr 0.0.0.0:9090
       --policy epsilon-greedy
     depends_on:
       - node1
