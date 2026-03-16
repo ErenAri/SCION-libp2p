@@ -1,0 +1,6 @@
+configuration,avg_latency_ms,p95_latency_ms,throughput_mbs,cache_hit_ratio,availability,fairness_index,stddev_latency_ms,delta_avg_pct,ci95_lower,ci95_upper
+Full system (ε-greedy),5.58,8.41,168.7227,0.9900,1.0000,0.8767,0.88,0.0,4.95,6.21
+No bandits (greedy),5.61,8.74,167.9480,0.9900,1.0000,0.8686,0.94,0.5,4.93,6.28
+No cache,6.72,11.56,143.2047,0.1980,1.0000,0.8172,1.45,20.5,5.69,7.76
+No Bloom exchange,7.52,15.88,139.3866,0.9900,1.0000,0.7602,3.21,34.8,5.23,9.82
+Random baseline,5.96,9.13,160.8690,0.9900,1.0000,0.8011,1.24,6.8,5.07,6.85

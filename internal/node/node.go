@@ -168,7 +168,9 @@ func (n *Node) Start(ctx context.Context) error {
 	go n.replicationLoop()
 
 	// Start periodic Bloom filter exchange for cooperative caching.
-	go n.cacheSummaryLoop()
+	if !n.Cfg.DisableBloomExchange {
+		go n.cacheSummaryLoop()
+	}
 
 	slog.Info("node started",
 		"peerID", n.Host.ID().String(),

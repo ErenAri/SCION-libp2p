@@ -45,6 +45,9 @@ type Config struct {
 	// Path selection
 	PathEpsilon float64 `mapstructure:"path_epsilon"` // epsilon-greedy exploration rate (default 0.1)
 
+	// Cooperative caching
+	DisableBloomExchange bool `mapstructure:"disable_bloom_exchange"` // disable Bloom filter cache exchange
+
 	// Probing
 	ProbeInterval time.Duration `mapstructure:"probe_interval"`
 	ProbeTimeout  time.Duration `mapstructure:"probe_timeout"`

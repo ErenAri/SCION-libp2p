@@ -319,13 +319,13 @@ Chunk size is dynamically tuned based on file size and best-path RTT:
 ### Bench Flags
 
 ```
---experiment         Experiment type: single, compare, scalability
+--experiment         Experiment type: single, compare, scalability, ablation, fault
 --nodes              Number of nodes (default: 5)
 --size               Content size in bytes (default: 1048576)
 --requests           Number of fetch requests (default: 100)
 --policy             Policy for single runs (default: epsilon-greedy)
 --epsilon            Epsilon for epsilon-greedy (default: 0.1)
---runs               Number of runs to average (default: 3)
+--runs               Number of runs to average (default: 10)
 --output-json        Write results as JSON to file
 --output-csv         Write results as CSV to file
 --output-timeseries  Write per-request time series CSVs to directory
@@ -403,18 +403,29 @@ go build -o scion-libp2p .
 ### Running Benchmarks
 
 ```bash
-# Seven-way policy comparison (100 requests, 3 runs averaged)
-./scion-libp2p bench --experiment compare --nodes 5 --requests 100 --runs 3 \
+# Seven-way policy comparison (100 requests, 10 runs with 95% CI)
+./scion-libp2p bench --experiment compare --nodes 5 --requests 100 --runs 10 \
   --output-csv results.csv --output-timeseries ./timeseries/
 
 # Scalability experiment (5, 10, 25 nodes)
-./scion-libp2p bench --experiment scalability --output-csv scale.csv
+./scion-libp2p bench --experiment scalability --runs 10 --output-csv scale.csv
+
+# Ablation study: disable subsystems individually
+./scion-libp2p bench --experiment ablation --nodes 10 --runs 10 \
+  --output-csv ablation.csv
+
+# Fault injection: node kill, churn, data loss
+./scion-libp2p bench --experiment fault --nodes 10 --runs 10 \
+  --output-csv fault_injection.csv
 
 # Single policy benchmark
 ./scion-libp2p bench --experiment single --policy thompson --nodes 10
 
-# Generate convergence plots (requires matplotlib)
+# Generate all plots (requires matplotlib)
 python results/plot_convergence.py
+
+# Full reproducibility run (all experiments + plots)
+make reproduce
 ```
 
 ### Docker WAN Simulation
@@ -485,7 +496,7 @@ docker compose up -d
 
 ## Evaluation Framework
 
-The `bench` command supports three experiment types for systematic evaluation with multi-run averaging and per-request time series export.
+The `bench` command supports five experiment types for systematic evaluation with multi-run averaging, 95% confidence intervals, and per-request time series export.
 
 ### Seven-Way Policy Comparison
 
@@ -513,14 +524,55 @@ Runs the comparison at increasing node counts (5, 10, 25) to measure latency deg
 
 Publishes content, replicates to all nodes, kills 30% of nodes, then measures block availability. Shows that replication + caching maintains content availability under churn.
 
+### Ablation Study
+
+Validates that each subsystem earns its complexity by running the same workload with individual subsystems disabled:
+
+| Configuration | What it tests |
+|---------------|--------------|
+| Full system (ε-greedy) | Baseline with all subsystems enabled |
+| No bandits (greedy) | Impact of removing exploration (greedy min-RTT only) |
+| No cache | Impact of disabling the block cache entirely |
+| No Bloom exchange | Impact of removing cooperative cache coordination |
+| Random baseline | Removes all path intelligence |
+
+```bash
+./scion-libp2p bench --experiment ablation --nodes 10 --runs 10 --output-csv ablation.csv
+```
+
+### Fault Injection
+
+Tests system resilience under active fault conditions:
+
+| Scenario | Description |
+|----------|-------------|
+| Clean (no faults) | Baseline without any faults |
+| Mid-run node kill (30%) | Kill 30% of nodes at the halfway point of the benchmark |
+| High churn (cycle 2 nodes) | Stop 2 nodes every 25 requests to simulate churn |
+| Partial data loss (50%) | Delete 50% of stored blocks before fetching |
+
+```bash
+./scion-libp2p bench --experiment fault --nodes 10 --runs 10 --output-csv fault_injection.csv
+```
+
+### Reproducibility
+
+All experiments can be reproduced with a single command:
+
+```bash
+make reproduce    # Runs all 5 experiments with 10 runs each, generates all plots
+```
+
+This executes the full benchmark suite with fixed seeds, producing CSV results and PNG plots in `results/`. The Makefile pins `RUNS=10` and `REQUESTS=100` for reproducibility.
+
 ### CSV Output
 
 All experiments support `--output-csv` for data analysis:
 
 ```
-policy,epsilon,node_count,avg_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,throughput_mbs,cache_hit_ratio,availability,fairness_index,stddev_latency_ms
-thompson,0.00,5,5.09,5.00,9.33,15.52,180.6737,0.9900,1.0000,0.6576,0.15
-epsilon-greedy,0.10,5,5.58,5.00,10.03,17.25,166.2276,0.9900,1.0000,0.6144,0.29
+policy,epsilon,node_count,avg_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,throughput_mbs,cache_hit_ratio,availability,fairness_index,stddev_latency_ms,ci95_lower,ci95_upper
+thompson,0.00,5,5.09,5.00,9.33,15.52,180.6737,0.9900,1.0000,0.6576,0.15,4.98,5.20
+epsilon-greedy,0.10,5,5.58,5.00,10.03,17.25,166.2276,0.9900,1.0000,0.6144,0.29,5.37,5.79
 ```
 
 ### Time Series Export
@@ -655,9 +707,13 @@ scion-libp2p/
 |   |-- compare_n5.csv              7-policy comparison at N=5
 |   |-- compare_n10.csv             7-policy comparison at N=10
 |   |-- compare_n25.csv             7-policy comparison at N=25
+|   |-- ablation.csv                Ablation study results
+|   |-- fault_injection.csv         Fault injection results
 |   |-- convergence_n{5,10,25}.png  Convergence analysis plots
 |   |-- comparison_n{5,10,25}.png   Policy comparison bar charts
-|   |-- plot_convergence.py         Matplotlib plot generator
+|   |-- ablation.png                Ablation study visualization
+|   |-- fault_injection.png         Fault injection visualization
+|   |-- plot_convergence.py         Matplotlib plot generator (all plots)
 |   |-- timeseries/                 Per-request latency CSVs (7 policies × 3 scales)
 |
 |-- docker/                       WAN simulation

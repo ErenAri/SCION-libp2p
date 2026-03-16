@@ -16,9 +16,11 @@ var benchCmd = &cobra.Command{
 	Long: `Run benchmark experiments for evaluation.
 
 Experiments:
-  single      Run a single benchmark with the specified policy
-  compare     Three-way comparison (epsilon-greedy vs latency vs random)
-  scalability Run comparison at multiple node counts (5,10,25)
+  single        Run a single benchmark with the specified policy
+  compare       Seven-way policy comparison
+  scalability   Run comparison at multiple node counts (5,10,25)
+  ablation      Ablation study: disable subsystems individually
+  fault         Fault injection: node kill, churn, data loss
 `,
 	RunE: runBench,
 }
@@ -61,8 +63,12 @@ func runBench(cmd *cobra.Command, args []string) error {
 		return runCompareBench()
 	case "scalability":
 		return runScalabilityBench()
+	case "ablation":
+		return runAblationBench()
+	case "fault", "fault-injection":
+		return runFaultInjectionBench()
 	default:
-		return fmt.Errorf("unknown experiment: %s (valid: single, compare, scalability)", benchExperiment)
+		return fmt.Errorf("unknown experiment: %s (valid: single, compare, scalability, ablation, fault)", benchExperiment)
 	}
 }
 
@@ -158,6 +164,86 @@ func runScalabilityBench() error {
 	}
 
 	printComparisonTable(results)
+
+	if benchOutputCSV != "" {
+		if err := results.WriteCSV(benchOutputCSV); err != nil {
+			return fmt.Errorf("write CSV: %w", err)
+		}
+		fmt.Printf("\nCSV results written to %s\n", benchOutputCSV)
+	}
+	if benchOutputJSON != "" {
+		if err := results.WriteJSON(benchOutputJSON); err != nil {
+			return fmt.Errorf("write JSON: %w", err)
+		}
+		fmt.Printf("JSON results written to %s\n", benchOutputJSON)
+	}
+
+	return nil
+}
+
+func runAblationBench() error {
+	slog.Info("running ablation study", "nodes", benchNodes, "runs", benchRuns)
+
+	runs := benchRuns
+	if runs < 3 {
+		runs = 10
+	}
+
+	results, err := bench.RunAblation(benchNodes, benchContentSize, benchRequests, benchChunkSize, runs)
+	if err != nil {
+		return fmt.Errorf("ablation failed: %w", err)
+	}
+
+	fmt.Println("\n=== Ablation Study ===")
+	fmt.Printf("%-28s %8s %8s %8s %8s %8s %10s\n",
+		"Configuration", "Avg(ms)", "±σ", "P95(ms)", "Cache%", "Δ Avg%", "95% CI")
+	fmt.Println(strings.Repeat("-", 90))
+
+	for _, e := range results.Entries {
+		fmt.Printf("%-28s %8.2f %8.2f %8.2f %7.1f%% %+8.1f%% [%.2f,%.2f]\n",
+			e.Configuration, e.AvgLatencyMs, e.StddevLatMs, e.P95LatencyMs,
+			e.CacheHitRatio*100, e.DeltaAvgPct, e.CI95Lower, e.CI95Upper)
+	}
+
+	if benchOutputCSV != "" {
+		if err := results.WriteCSV(benchOutputCSV); err != nil {
+			return fmt.Errorf("write CSV: %w", err)
+		}
+		fmt.Printf("\nCSV results written to %s\n", benchOutputCSV)
+	}
+	if benchOutputJSON != "" {
+		if err := results.WriteJSON(benchOutputJSON); err != nil {
+			return fmt.Errorf("write JSON: %w", err)
+		}
+		fmt.Printf("JSON results written to %s\n", benchOutputJSON)
+	}
+
+	return nil
+}
+
+func runFaultInjectionBench() error {
+	slog.Info("running fault injection", "nodes", benchNodes, "runs", benchRuns)
+
+	runs := benchRuns
+	if runs < 3 {
+		runs = 10
+	}
+
+	results, err := bench.RunFaultInjection(benchNodes, benchContentSize, benchRequests, benchChunkSize, runs)
+	if err != nil {
+		return fmt.Errorf("fault injection failed: %w", err)
+	}
+
+	fmt.Println("\n=== Fault Injection Results ===")
+	fmt.Printf("%-30s %8s %8s %8s %8s %10s\n",
+		"Scenario", "Avg(ms)", "±σ", "P95(ms)", "Errors", "Δ Avg%")
+	fmt.Println(strings.Repeat("-", 82))
+
+	for _, e := range results.Entries {
+		fmt.Printf("%-30s %8.2f %8.2f %8.2f %8d %+9.1f%%\n",
+			e.Scenario, e.AvgLatencyMs, e.StddevLatMs, e.P95LatencyMs,
+			e.ErrorCount, e.DeltaAvgPct)
+	}
 
 	if benchOutputCSV != "" {
 		if err := results.WriteCSV(benchOutputCSV); err != nil {

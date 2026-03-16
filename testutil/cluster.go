@@ -26,6 +26,8 @@ type ClusterOptions struct {
 	Epsilon       float64       // epsilon for epsilon-greedy policy
 	DisableMDNS   bool          // disable mDNS (recommended for benchmarks to avoid shutdown races)
 	ProbeInterval time.Duration // override probe interval (default: 30s; use 3-5s for benchmarks)
+	DisableCache  bool          // set CacheMaxBytes=1 to effectively disable block caching
+	DisableBloom  bool          // disable Bloom filter cooperative cache exchange
 }
 
 func clusterConfig(i, port int, tmpDir string) node.Config {
@@ -45,21 +47,26 @@ func clusterConfigWithOptions(i, port int, tmpDir string, opts ClusterOptions) n
 	if probeInterval <= 0 {
 		probeInterval = 30 * time.Second
 	}
+	cacheBytes := int64(16 * 1024 * 1024)
+	if opts.DisableCache {
+		cacheBytes = 1 // effectively disable caching
+	}
 	return node.Config{
-		ListenAddrs:    []string{fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)},
-		BootstrapPeers: nil,
-		DataDir:        tmpDir,
-		EnableRelay:    true,
-		EnableMDNS:     !opts.DisableMDNS,
-		APIAddr:        fmt.Sprintf("127.0.0.1:%d", port+1000),
-		MetricsAddr:    "", // disable metrics to avoid port conflicts in benchmarks
-		PathPolicy:     policy,
-		PathEpsilon:    epsilon,
-		CacheMaxBytes:  16 * 1024 * 1024,
-		ChunkSizeBytes: 256 * 1024,
-		ProbeInterval:  probeInterval,
-		ProbeTimeout:   3 * time.Second,
-		LogLevel:       "warn",
+		ListenAddrs:          []string{fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)},
+		BootstrapPeers:       nil,
+		DataDir:              tmpDir,
+		EnableRelay:          true,
+		EnableMDNS:           !opts.DisableMDNS,
+		APIAddr:              fmt.Sprintf("127.0.0.1:%d", port+1000),
+		MetricsAddr:          "", // disable metrics to avoid port conflicts in benchmarks
+		PathPolicy:           policy,
+		PathEpsilon:          epsilon,
+		CacheMaxBytes:        cacheBytes,
+		ChunkSizeBytes:       256 * 1024,
+		ProbeInterval:        probeInterval,
+		ProbeTimeout:         3 * time.Second,
+		DisableBloomExchange: opts.DisableBloom,
+		LogLevel:             "warn",
 	}
 }
 

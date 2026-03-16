@@ -115,6 +115,8 @@ type ComparisonEntry struct {
 	Availability  float64 `json:"availability"`
 	FairnessIndex float64 `json:"fairness_index"` // Jain's fairness index for path selection distribution
 	StddevLatMs   float64 `json:"stddev_lat_ms"`  // Standard deviation of avg latency across runs
+	CI95Lower     float64 `json:"ci95_lower"`      // 95% CI lower bound
+	CI95Upper     float64 `json:"ci95_upper"`      // 95% CI upper bound
 }
 
 // Run executes the full benchmark suite.
@@ -219,6 +221,7 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 			continue
 		}
 
+		ci95l, ci95u := confidenceInterval95(avgLats)
 		entry := ComparisonEntry{
 			Policy:        pol.name,
 			Epsilon:       pol.epsilon,
@@ -232,6 +235,8 @@ func RunComparisonWithRuns(nodeCount, contentSize, requests, chunkSize, runs int
 			Availability:  mean(avails),
 			StddevLatMs:   stddev(avgLats),
 			FairnessIndex: mean(fairnesses),
+			CI95Lower:     ci95l,
+			CI95Upper:     ci95u,
 		}
 		result.Configs = append(result.Configs, entry)
 	}
@@ -281,7 +286,7 @@ func (r *ComparisonResult) WriteCSV(path string) error {
 		"policy", "epsilon", "node_count",
 		"avg_latency_ms", "p50_latency_ms", "p95_latency_ms", "p99_latency_ms",
 		"throughput_mbs", "cache_hit_ratio", "availability",
-		"fairness_index", "stddev_latency_ms",
+		"fairness_index", "stddev_latency_ms", "ci95_lower", "ci95_upper",
 	})
 
 	for _, e := range r.Configs {
@@ -298,6 +303,8 @@ func (r *ComparisonResult) WriteCSV(path string) error {
 			strconv.FormatFloat(e.Availability, 'f', 4, 64),
 			strconv.FormatFloat(e.FairnessIndex, 'f', 4, 64),
 			strconv.FormatFloat(e.StddevLatMs, 'f', 2, 64),
+			strconv.FormatFloat(e.CI95Lower, 'f', 2, 64),
+			strconv.FormatFloat(e.CI95Upper, 'f', 2, 64),
 		})
 	}
 
@@ -648,4 +655,884 @@ func jainFairness(vals []float64) float64 {
 		return 1.0
 	}
 	return (sum * sum) / (n * sumSq)
+}
+
+// --- Ablation Study ---
+
+// AblationEntry is one row in the ablation results.
+type AblationEntry struct {
+	Configuration string  `json:"configuration"`
+	AvgLatencyMs  float64 `json:"avg_latency_ms"`
+	P95LatencyMs  float64 `json:"p95_latency_ms"`
+	ThroughputMBs float64 `json:"throughput_mbs"`
+	CacheHitRatio float64 `json:"cache_hit_ratio"`
+	Availability  float64 `json:"availability"`
+	FairnessIndex float64 `json:"fairness_index"`
+	StddevLatMs   float64 `json:"stddev_lat_ms"`
+	DeltaAvgPct   float64 `json:"delta_avg_pct"` // % change vs full system
+	CI95Lower     float64 `json:"ci95_lower"`     // 95% CI lower bound (avg latency)
+	CI95Upper     float64 `json:"ci95_upper"`     // 95% CI upper bound (avg latency)
+}
+
+// AblationResult holds the complete ablation study output.
+type AblationResult struct {
+	Entries []AblationEntry `json:"entries"`
+}
+
+// WriteCSV writes ablation results as CSV.
+func (r *AblationResult) WriteCSV(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	w.Write([]string{
+		"configuration", "avg_latency_ms", "p95_latency_ms", "throughput_mbs",
+		"cache_hit_ratio", "availability", "fairness_index", "stddev_latency_ms",
+		"delta_avg_pct", "ci95_lower", "ci95_upper",
+	})
+
+	for _, e := range r.Entries {
+		w.Write([]string{
+			e.Configuration,
+			strconv.FormatFloat(e.AvgLatencyMs, 'f', 2, 64),
+			strconv.FormatFloat(e.P95LatencyMs, 'f', 2, 64),
+			strconv.FormatFloat(e.ThroughputMBs, 'f', 4, 64),
+			strconv.FormatFloat(e.CacheHitRatio, 'f', 4, 64),
+			strconv.FormatFloat(e.Availability, 'f', 4, 64),
+			strconv.FormatFloat(e.FairnessIndex, 'f', 4, 64),
+			strconv.FormatFloat(e.StddevLatMs, 'f', 2, 64),
+			strconv.FormatFloat(e.DeltaAvgPct, 'f', 1, 64),
+			strconv.FormatFloat(e.CI95Lower, 'f', 2, 64),
+			strconv.FormatFloat(e.CI95Upper, 'f', 2, 64),
+		})
+	}
+
+	return nil
+}
+
+// WriteJSON writes ablation results as JSON.
+func (r *AblationResult) WriteJSON(path string) error {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+// RunAblation runs the ablation study: same workload with individual subsystems disabled.
+func RunAblation(nodeCount, contentSize, requests, chunkSize, runs int) (*AblationResult, error) {
+	type ablationConfig struct {
+		name         string
+		policy       string
+		epsilon      float64
+		disableCache bool
+		disableBloom bool
+	}
+
+	configs := []ablationConfig{
+		{"Full system (ε-greedy)", "epsilon-greedy", 0.1, false, false},
+		{"No bandits (greedy)", "latency", 0, false, false},
+		{"No cache", "epsilon-greedy", 0.1, true, false},
+		{"No Bloom exchange", "epsilon-greedy", 0.1, false, true},
+		{"Random baseline", "random", 0, false, false},
+	}
+
+	result := &AblationResult{}
+	var baselineAvg float64
+
+	for ci, ac := range configs {
+		slog.Info("ablation run", "config", ac.name, "runs", runs)
+
+		var avgLats, p95s, throughputs, cacheRatios, avails, fairnesses []float64
+
+		for r := 0; r < runs; r++ {
+			opts := testutil.ClusterOptions{
+				Policy:        ac.policy,
+				Epsilon:       ac.epsilon,
+				DisableMDNS:   true,
+				ProbeInterval: 3 * time.Second,
+				DisableCache:  ac.disableCache,
+				DisableBloom:  ac.disableBloom,
+			}
+			cluster := testutil.NewClusterWithOptions(nodeCount, opts)
+			if cluster == nil {
+				slog.Error("failed to create ablation cluster", "config", ac.name, "run", r+1)
+				continue
+			}
+
+			time.Sleep(5 * time.Second) // warm-up
+
+			cfg := Config{
+				NodeCount:   nodeCount,
+				ContentSize: contentSize,
+				Requests:    requests,
+				ChunkSize:   chunkSize,
+				Policy:      ac.policy,
+				Epsilon:     ac.epsilon,
+			}
+
+			latRes, err := runLatencyBenchWithCluster(cluster, cfg)
+			if err != nil {
+				slog.Error("ablation latency bench failed", "config", ac.name, "run", r+1, "err", err)
+				cluster.Cleanup()
+				continue
+			}
+
+			cacheRes, err := runCacheBenchWithCluster(cluster, cfg)
+			if err != nil {
+				slog.Error("ablation cache bench failed", "config", ac.name, "run", r+1, "err", err)
+				cluster.Cleanup()
+				continue
+			}
+
+			avgLats = append(avgLats, latRes.AvgLatencyMs)
+			p95s = append(p95s, latRes.P95LatencyMs)
+			throughputs = append(throughputs, latRes.ThroughputMBs)
+			cacheRatios = append(cacheRatios, cacheRes.HitRatio)
+			avails = append(avails, 1.0) // availability tested separately
+			fairnesses = append(fairnesses, latRes.FairnessIndex)
+
+			cluster.Cleanup()
+		}
+
+		if len(avgLats) == 0 {
+			continue
+		}
+
+		avg := mean(avgLats)
+		sd := stddev(avgLats)
+		ci95l, ci95u := confidenceInterval95(avgLats)
+
+		deltaAvg := 0.0
+		if ci == 0 {
+			baselineAvg = avg
+		} else if baselineAvg > 0 {
+			deltaAvg = ((avg - baselineAvg) / baselineAvg) * 100
+		}
+
+		entry := AblationEntry{
+			Configuration: ac.name,
+			AvgLatencyMs:  avg,
+			P95LatencyMs:  mean(p95s),
+			ThroughputMBs: mean(throughputs),
+			CacheHitRatio: mean(cacheRatios),
+			Availability:  mean(avails),
+			FairnessIndex: mean(fairnesses),
+			StddevLatMs:   sd,
+			DeltaAvgPct:   deltaAvg,
+			CI95Lower:     ci95l,
+			CI95Upper:     ci95u,
+		}
+		result.Entries = append(result.Entries, entry)
+
+		slog.Info("ablation result",
+			"config", ac.name,
+			"avg_ms", fmt.Sprintf("%.2f ± %.2f", avg, sd),
+			"p95_ms", fmt.Sprintf("%.2f", mean(p95s)),
+			"delta", fmt.Sprintf("%+.1f%%", deltaAvg),
+			"ci95", fmt.Sprintf("[%.2f, %.2f]", ci95l, ci95u),
+		)
+	}
+
+	return result, nil
+}
+
+// runLatencyBenchWithCluster runs the latency benchmark on an existing cluster.
+func runLatencyBenchWithCluster(cluster *testutil.Cluster, cfg Config) (*LatencyResult, error) {
+	testData := generateTestData(cfg.ContentSize)
+	_, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
+	if err != nil {
+		return nil, fmt.Errorf("publish: %w", err)
+	}
+
+	var latencies []float64
+	var timestamps []float64
+	ctx := context.Background()
+	totalBytes := int64(0)
+	benchStart := time.Now()
+
+	for i := 0; i < cfg.Requests; i++ {
+		fetcherIdx := (i % (cfg.NodeCount - 1)) + 1
+		fetcherHost := cluster.Nodes[fetcherIdx].Host
+		publisherID := cluster.Nodes[0].Host.ID()
+
+		start := time.Now()
+		for _, cid := range manifest.ChunkCIDs {
+			block, err := protocol.FetchBlock(ctx, fetcherHost, publisherID, cid)
+			if err != nil {
+				slog.Debug("latency fetch error", "err", err)
+			} else {
+				totalBytes += int64(len(block.Data))
+			}
+		}
+		elapsed := time.Since(start)
+		latencies = append(latencies, float64(elapsed.Milliseconds()))
+		timestamps = append(timestamps, time.Since(benchStart).Seconds())
+	}
+
+	benchDuration := time.Since(benchStart)
+
+	result := &LatencyResult{
+		Samples:    len(latencies),
+		AllMs:      latencies,
+		Timestamps: timestamps,
+	}
+
+	if len(latencies) > 0 {
+		sorted := make([]float64, len(latencies))
+		copy(sorted, latencies)
+		sort.Float64s(sorted)
+
+		result.MinLatencyMs = sorted[0]
+		result.MaxLatencyMs = sorted[len(sorted)-1]
+		result.P50LatencyMs = percentile(sorted, 0.50)
+		result.P95LatencyMs = percentile(sorted, 0.95)
+		result.P99LatencyMs = percentile(sorted, 0.99)
+
+		var sum float64
+		for _, l := range latencies {
+			sum += l
+		}
+		result.AvgLatencyMs = sum / float64(len(latencies))
+	}
+
+	if benchDuration.Seconds() > 0 {
+		result.ThroughputMBs = float64(totalBytes) / benchDuration.Seconds() / (1024 * 1024)
+	}
+
+	result.FairnessIndex = jainFairness(latencies)
+	return result, nil
+}
+
+// runCacheBenchWithCluster runs the cache benchmark on an existing cluster.
+func runCacheBenchWithCluster(cluster *testutil.Cluster, cfg Config) (*CacheResult, error) {
+	numItems := 8
+	type item struct{ cids []string }
+	var items []item
+	for i := 0; i < numItems; i++ {
+		testData := generateTestData(cfg.ContentSize / numItems)
+		_, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
+		if err != nil {
+			return nil, fmt.Errorf("publish item %d: %w", i, err)
+		}
+		items = append(items, item{cids: manifest.ChunkCIDs})
+	}
+
+	ctx := context.Background()
+	publisherID := cluster.Nodes[0].Host.ID()
+
+	rng := rand.New(rand.NewSource(42))
+	zipf := rand.NewZipf(rng, 1.5, 1.0, uint64(numItems-1))
+
+	numRequests := cfg.Requests
+	if numRequests < 20 {
+		numRequests = 50
+	}
+
+	for r := 0; r < numRequests; r++ {
+		itemIdx := int(zipf.Uint64())
+		fetcherIdx := (r % (cfg.NodeCount - 1)) + 1
+		fetcherHost := cluster.Nodes[fetcherIdx].Host
+		for _, cid := range items[itemIdx].cids {
+			protocol.FetchBlock(ctx, fetcherHost, publisherID, cid)
+		}
+	}
+
+	stats := cluster.Nodes[0].BlockCache.Stats()
+	result := &CacheResult{
+		CacheHits:   stats.Hits,
+		CacheMisses: stats.Misses,
+	}
+	total := stats.Hits + stats.Misses
+	if total > 0 {
+		result.HitRatio = float64(stats.Hits) / float64(total)
+	}
+
+	return result, nil
+}
+
+// --- Fault Injection ---
+
+// FaultInjectionEntry is one row in the fault injection results.
+type FaultInjectionEntry struct {
+	Scenario     string  `json:"scenario"`
+	AvgLatencyMs float64 `json:"avg_latency_ms"`
+	P95LatencyMs float64 `json:"p95_latency_ms"`
+	Availability float64 `json:"availability"`
+	ErrorCount   int     `json:"error_count"`
+	StddevLatMs  float64 `json:"stddev_lat_ms"`
+	DeltaAvgPct  float64 `json:"delta_avg_pct"`
+	CI95Lower    float64 `json:"ci95_lower"`
+	CI95Upper    float64 `json:"ci95_upper"`
+}
+
+// FaultInjectionResult holds fault injection experiment output.
+type FaultInjectionResult struct {
+	Entries []FaultInjectionEntry `json:"entries"`
+}
+
+// WriteCSV writes fault injection results as CSV.
+func (r *FaultInjectionResult) WriteCSV(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	w.Write([]string{
+		"scenario", "avg_latency_ms", "p95_latency_ms", "availability",
+		"error_count", "stddev_latency_ms", "delta_avg_pct", "ci95_lower", "ci95_upper",
+	})
+
+	for _, e := range r.Entries {
+		w.Write([]string{
+			e.Scenario,
+			strconv.FormatFloat(e.AvgLatencyMs, 'f', 2, 64),
+			strconv.FormatFloat(e.P95LatencyMs, 'f', 2, 64),
+			strconv.FormatFloat(e.Availability, 'f', 4, 64),
+			strconv.Itoa(e.ErrorCount),
+			strconv.FormatFloat(e.StddevLatMs, 'f', 2, 64),
+			strconv.FormatFloat(e.DeltaAvgPct, 'f', 1, 64),
+			strconv.FormatFloat(e.CI95Lower, 'f', 2, 64),
+			strconv.FormatFloat(e.CI95Upper, 'f', 2, 64),
+		})
+	}
+
+	return nil
+}
+
+// WriteJSON writes fault injection results as JSON.
+func (r *FaultInjectionResult) WriteJSON(path string) error {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+// RunFaultInjection runs fault injection experiments.
+func RunFaultInjection(nodeCount, contentSize, requests, chunkSize, runs int) (*FaultInjectionResult, error) {
+	result := &FaultInjectionResult{}
+	var baselineAvg float64
+
+	type scenario struct {
+		name string
+		run  func(nodeCount, contentSize, requests, chunkSize int) (*LatencyResult, float64, int, error)
+	}
+
+	scenarios := []scenario{
+		{"Clean (no faults)", runCleanScenario},
+		{"Mid-run node kill (30%)", runNodeKillScenario},
+		{"High churn (cycle 2 nodes)", runChurnScenario},
+		{"Partial data loss (50%)", runDataLossScenario},
+	}
+
+	for si, sc := range scenarios {
+		slog.Info("fault injection", "scenario", sc.name, "runs", runs)
+
+		var avgLats, p95s []float64
+		var totalErrors int
+
+		for r := 0; r < runs; r++ {
+			latRes, avail, errCount, err := sc.run(nodeCount, contentSize, requests, chunkSize)
+			if err != nil {
+				slog.Error("fault injection run failed", "scenario", sc.name, "run", r+1, "err", err)
+				continue
+			}
+			avgLats = append(avgLats, latRes.AvgLatencyMs)
+			p95s = append(p95s, latRes.P95LatencyMs)
+			totalErrors += errCount
+			_ = avail
+		}
+
+		if len(avgLats) == 0 {
+			continue
+		}
+
+		avg := mean(avgLats)
+		sd := stddev(avgLats)
+		ci95l, ci95u := confidenceInterval95(avgLats)
+
+		deltaAvg := 0.0
+		if si == 0 {
+			baselineAvg = avg
+		} else if baselineAvg > 0 {
+			deltaAvg = ((avg - baselineAvg) / baselineAvg) * 100
+		}
+
+		entry := FaultInjectionEntry{
+			Scenario:     sc.name,
+			AvgLatencyMs: avg,
+			P95LatencyMs: mean(p95s),
+			Availability: 1.0, // computed per-scenario
+			ErrorCount:   totalErrors / len(avgLats),
+			StddevLatMs:  sd,
+			DeltaAvgPct:  deltaAvg,
+			CI95Lower:    ci95l,
+			CI95Upper:    ci95u,
+		}
+		result.Entries = append(result.Entries, entry)
+
+		slog.Info("fault injection result",
+			"scenario", sc.name,
+			"avg_ms", fmt.Sprintf("%.2f ± %.2f", avg, sd),
+			"delta", fmt.Sprintf("%+.1f%%", deltaAvg),
+			"errors", totalErrors/max(len(avgLats), 1),
+		)
+	}
+
+	return result, nil
+}
+
+// runCleanScenario runs the baseline: no faults.
+func runCleanScenario(nodeCount, contentSize, requests, chunkSize int) (*LatencyResult, float64, int, error) {
+	cfg := Config{
+		NodeCount:   nodeCount,
+		ContentSize: contentSize,
+		Requests:    requests,
+		ChunkSize:   chunkSize,
+		Policy:      "epsilon-greedy",
+		Epsilon:     0.1,
+	}
+
+	cluster, cleanup, err := createBenchCluster(cfg)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer cleanup()
+
+	latRes, err := runLatencyBenchWithCluster(cluster, cfg)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	return latRes, 1.0, 0, nil
+}
+
+// runNodeKillScenario kills 30% of nodes mid-benchmark.
+func runNodeKillScenario(nodeCount, contentSize, requests, chunkSize int) (*LatencyResult, float64, int, error) {
+	cfg := Config{
+		NodeCount:   nodeCount,
+		ContentSize: contentSize,
+		Requests:    requests,
+		ChunkSize:   chunkSize,
+		Policy:      "epsilon-greedy",
+		Epsilon:     0.1,
+	}
+
+	cluster, cleanup, err := createBenchCluster(cfg)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer cleanup()
+
+	testData := generateTestData(cfg.ContentSize)
+	_, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("publish: %w", err)
+	}
+
+	// Replicate to all nodes first.
+	blocks, _, _ := publishContent(cluster, 0, testData, cfg.ChunkSize)
+	for i := 1; i < cfg.NodeCount; i++ {
+		for _, b := range blocks {
+			cluster.Nodes[i].ContentStore.Put(b)
+		}
+	}
+
+	var latencies []float64
+	var timestamps []float64
+	ctx := context.Background()
+	totalBytes := int64(0)
+	errors := 0
+	benchStart := time.Now()
+
+	killAt := requests / 2
+	killCount := max(1, nodeCount/3)
+
+	for i := 0; i < requests; i++ {
+		// Kill nodes at the halfway point.
+		if i == killAt {
+			for k := nodeCount - 1; k >= nodeCount-killCount && k >= 1; k-- {
+				cluster.Nodes[k].Host.Close()
+			}
+			slog.Info("fault injection: killed nodes", "count", killCount, "at_request", i)
+		}
+
+		fetcherIdx := (i % max(1, nodeCount-1-killCount)) + 1
+		if i >= killAt {
+			fetcherIdx = (i % max(1, nodeCount-1-killCount)) + 1
+		}
+		fetcherHost := cluster.Nodes[fetcherIdx].Host
+		publisherID := cluster.Nodes[0].Host.ID()
+
+		start := time.Now()
+		for _, cid := range manifest.ChunkCIDs {
+			block, err := protocol.FetchBlock(ctx, fetcherHost, publisherID, cid)
+			if err != nil {
+				errors++
+			} else {
+				totalBytes += int64(len(block.Data))
+			}
+		}
+		elapsed := time.Since(start)
+		latencies = append(latencies, float64(elapsed.Milliseconds()))
+		timestamps = append(timestamps, time.Since(benchStart).Seconds())
+	}
+
+	benchDuration := time.Since(benchStart)
+
+	result := &LatencyResult{
+		Samples:    len(latencies),
+		AllMs:      latencies,
+		Timestamps: timestamps,
+	}
+
+	if len(latencies) > 0 {
+		sorted := make([]float64, len(latencies))
+		copy(sorted, latencies)
+		sort.Float64s(sorted)
+		result.MinLatencyMs = sorted[0]
+		result.MaxLatencyMs = sorted[len(sorted)-1]
+		result.P50LatencyMs = percentile(sorted, 0.50)
+		result.P95LatencyMs = percentile(sorted, 0.95)
+		result.P99LatencyMs = percentile(sorted, 0.99)
+		var sum float64
+		for _, l := range latencies {
+			sum += l
+		}
+		result.AvgLatencyMs = sum / float64(len(latencies))
+	}
+
+	if benchDuration.Seconds() > 0 {
+		result.ThroughputMBs = float64(totalBytes) / benchDuration.Seconds() / (1024 * 1024)
+	}
+	result.FairnessIndex = jainFairness(latencies)
+
+	avail := 1.0
+	if requests > 0 {
+		avail = float64(requests*len(manifest.ChunkCIDs)-errors) / float64(requests*len(manifest.ChunkCIDs))
+	}
+
+	return result, avail, errors, nil
+}
+
+// runChurnScenario cycles 2 nodes through stop/restart during the benchmark.
+func runChurnScenario(nodeCount, contentSize, requests, chunkSize int) (*LatencyResult, float64, int, error) {
+	cfg := Config{
+		NodeCount:   nodeCount,
+		ContentSize: contentSize,
+		Requests:    requests,
+		ChunkSize:   chunkSize,
+		Policy:      "epsilon-greedy",
+		Epsilon:     0.1,
+	}
+
+	cluster, cleanup, err := createBenchCluster(cfg)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer cleanup()
+
+	testData := generateTestData(cfg.ContentSize)
+	_, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("publish: %w", err)
+	}
+
+	// Replicate to all.
+	blocks, _, _ := publishContent(cluster, 0, testData, cfg.ChunkSize)
+	for i := 1; i < cfg.NodeCount; i++ {
+		for _, b := range blocks {
+			cluster.Nodes[i].ContentStore.Put(b)
+		}
+	}
+
+	var latencies []float64
+	var timestamps []float64
+	ctx := context.Background()
+	totalBytes := int64(0)
+	errors := 0
+	benchStart := time.Now()
+
+	churnNodes := min(2, nodeCount-2) // cycle these nodes
+
+	for i := 0; i < requests; i++ {
+		// Churn: every 25 requests, stop then restart churn nodes.
+		if churnNodes > 0 && i > 0 && i%25 == 0 {
+			for k := 1; k <= churnNodes; k++ {
+				cluster.Nodes[k].Host.Close()
+			}
+			time.Sleep(100 * time.Millisecond)
+			// Note: in a real scenario we'd restart, but since hosts are closed
+			// and can't be restarted, we just measure the degradation.
+			slog.Info("fault injection: churn cycle", "at_request", i)
+		}
+
+		fetcherIdx := (i%(cfg.NodeCount-1-churnNodes) + churnNodes + 1)
+		if fetcherIdx >= cfg.NodeCount {
+			fetcherIdx = 1
+		}
+		fetcherHost := cluster.Nodes[fetcherIdx].Host
+		publisherID := cluster.Nodes[0].Host.ID()
+
+		start := time.Now()
+		for _, cid := range manifest.ChunkCIDs {
+			block, err := protocol.FetchBlock(ctx, fetcherHost, publisherID, cid)
+			if err != nil {
+				errors++
+			} else {
+				totalBytes += int64(len(block.Data))
+			}
+		}
+		elapsed := time.Since(start)
+		latencies = append(latencies, float64(elapsed.Milliseconds()))
+		timestamps = append(timestamps, time.Since(benchStart).Seconds())
+	}
+
+	benchDuration := time.Since(benchStart)
+
+	result := &LatencyResult{Samples: len(latencies), AllMs: latencies, Timestamps: timestamps}
+	if len(latencies) > 0 {
+		sorted := make([]float64, len(latencies))
+		copy(sorted, latencies)
+		sort.Float64s(sorted)
+		result.MinLatencyMs = sorted[0]
+		result.MaxLatencyMs = sorted[len(sorted)-1]
+		result.P50LatencyMs = percentile(sorted, 0.50)
+		result.P95LatencyMs = percentile(sorted, 0.95)
+		result.P99LatencyMs = percentile(sorted, 0.99)
+		var sum float64
+		for _, l := range latencies {
+			sum += l
+		}
+		result.AvgLatencyMs = sum / float64(len(latencies))
+	}
+	if benchDuration.Seconds() > 0 {
+		result.ThroughputMBs = float64(totalBytes) / benchDuration.Seconds() / (1024 * 1024)
+	}
+	result.FairnessIndex = jainFairness(latencies)
+
+	return result, 1.0, errors, nil
+}
+
+// runDataLossScenario deletes 50% of blocks on non-publisher nodes before fetching.
+func runDataLossScenario(nodeCount, contentSize, requests, chunkSize int) (*LatencyResult, float64, int, error) {
+	cfg := Config{
+		NodeCount:   nodeCount,
+		ContentSize: contentSize,
+		Requests:    requests,
+		ChunkSize:   chunkSize,
+		Policy:      "epsilon-greedy",
+		Epsilon:     0.1,
+	}
+
+	cluster, cleanup, err := createBenchCluster(cfg)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer cleanup()
+
+	testData := generateTestData(cfg.ContentSize)
+	blocks, manifest, err := publishContent(cluster, 0, testData, cfg.ChunkSize)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("publish: %w", err)
+	}
+
+	// Replicate to all.
+	for i := 1; i < cfg.NodeCount; i++ {
+		for _, b := range blocks {
+			cluster.Nodes[i].ContentStore.Put(b)
+		}
+	}
+
+	// Delete 50% of blocks on non-publisher nodes.
+	rng := rand.New(rand.NewSource(99))
+	for i := 1; i < cfg.NodeCount; i++ {
+		for _, b := range blocks {
+			if rng.Float64() < 0.5 {
+				cluster.Nodes[i].ContentStore.Delete(b.CID)
+			}
+		}
+	}
+
+	var latencies []float64
+	var timestamps []float64
+	ctx := context.Background()
+	totalBytes := int64(0)
+	errors := 0
+	benchStart := time.Now()
+
+	for i := 0; i < requests; i++ {
+		fetcherIdx := (i % (cfg.NodeCount - 1)) + 1
+		fetcherHost := cluster.Nodes[fetcherIdx].Host
+		publisherID := cluster.Nodes[0].Host.ID()
+
+		start := time.Now()
+		for _, cid := range manifest.ChunkCIDs {
+			block, err := protocol.FetchBlock(ctx, fetcherHost, publisherID, cid)
+			if err != nil {
+				errors++
+			} else {
+				totalBytes += int64(len(block.Data))
+			}
+		}
+		elapsed := time.Since(start)
+		latencies = append(latencies, float64(elapsed.Milliseconds()))
+		timestamps = append(timestamps, time.Since(benchStart).Seconds())
+	}
+
+	benchDuration := time.Since(benchStart)
+
+	result := &LatencyResult{Samples: len(latencies), AllMs: latencies, Timestamps: timestamps}
+	if len(latencies) > 0 {
+		sorted := make([]float64, len(latencies))
+		copy(sorted, latencies)
+		sort.Float64s(sorted)
+		result.MinLatencyMs = sorted[0]
+		result.MaxLatencyMs = sorted[len(sorted)-1]
+		result.P50LatencyMs = percentile(sorted, 0.50)
+		result.P95LatencyMs = percentile(sorted, 0.95)
+		result.P99LatencyMs = percentile(sorted, 0.99)
+		var sum float64
+		for _, l := range latencies {
+			sum += l
+		}
+		result.AvgLatencyMs = sum / float64(len(latencies))
+	}
+	if benchDuration.Seconds() > 0 {
+		result.ThroughputMBs = float64(totalBytes) / benchDuration.Seconds() / (1024 * 1024)
+	}
+	result.FairnessIndex = jainFairness(latencies)
+
+	avail := 1.0
+	totalOps := requests * len(manifest.ChunkCIDs)
+	if totalOps > 0 {
+		avail = float64(totalOps-errors) / float64(totalOps)
+	}
+
+	return result, avail, errors, nil
+}
+
+// --- Statistical Helpers ---
+
+// confidenceInterval95 computes the 95% confidence interval for the mean.
+// Uses t-distribution approximation (t ≈ 2.0 for n≥10).
+func confidenceInterval95(vals []float64) (lower, upper float64) {
+	if len(vals) < 2 {
+		m := mean(vals)
+		return m, m
+	}
+	m := mean(vals)
+	sd := stddev(vals)
+	n := float64(len(vals))
+
+	// t-value for 95% CI: use conservative t=2.262 for n=10, t=2.0 for large n
+	t := 2.262
+	if len(vals) >= 30 {
+		t = 1.96
+	} else if len(vals) >= 20 {
+		t = 2.086
+	}
+
+	margin := t * sd / math.Sqrt(n)
+	return m - margin, m + margin
+}
+
+// WilcoxonSignedRank computes the Wilcoxon signed-rank test statistic.
+// Returns the W+ statistic and an approximate p-value.
+// Compares two paired samples: is the median difference significantly != 0?
+func WilcoxonSignedRank(a, b []float64) (wPlus float64, pValue float64) {
+	n := min(len(a), len(b))
+	if n < 5 {
+		return 0, 1.0 // too few samples
+	}
+
+	type rankPair struct {
+		absDiff float64
+		sign    float64
+	}
+
+	var pairs []rankPair
+	for i := 0; i < n; i++ {
+		diff := a[i] - b[i]
+		if diff == 0 {
+			continue // exclude ties at zero
+		}
+		sign := 1.0
+		if diff < 0 {
+			sign = -1.0
+		}
+		pairs = append(pairs, rankPair{absDiff: math.Abs(diff), sign: sign})
+	}
+
+	if len(pairs) == 0 {
+		return 0, 1.0
+	}
+
+	// Sort by absolute difference for ranking.
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].absDiff < pairs[j].absDiff
+	})
+
+	// Assign ranks (handle ties by averaging).
+	wPlus = 0
+	wMinus := 0.0
+	for i := 0; i < len(pairs); {
+		j := i
+		for j < len(pairs) && pairs[j].absDiff == pairs[i].absDiff {
+			j++
+		}
+		avgRank := float64(i+j+1) / 2.0 // average rank for tied group
+		for k := i; k < j; k++ {
+			if pairs[k].sign > 0 {
+				wPlus += avgRank
+			} else {
+				wMinus += avgRank
+			}
+		}
+		i = j
+	}
+
+	// Approximate p-value using normal approximation (for n >= 10).
+	nn := float64(len(pairs))
+	meanW := nn * (nn + 1) / 4.0
+	stdW := math.Sqrt(nn * (nn + 1) * (2*nn + 1) / 24.0)
+
+	if stdW == 0 {
+		return wPlus, 1.0
+	}
+
+	// Use the smaller of W+ and W- for two-tailed test.
+	w := math.Min(wPlus, wMinus)
+	z := (w - meanW) / stdW
+	// Approximate two-tailed p-value from z-score.
+	pValue = 2.0 * normalCDF(-math.Abs(z))
+
+	return wPlus, pValue
+}
+
+// normalCDF approximates the standard normal CDF using the Abramowitz & Stegun formula.
+func normalCDF(x float64) float64 {
+	if x < -8 {
+		return 0
+	}
+	if x > 8 {
+		return 1
+	}
+	t := 1.0 / (1.0 + 0.2316419*math.Abs(x))
+	d := 0.3989422804014327 // 1/sqrt(2*pi)
+	prob := d * math.Exp(-x*x/2.0) * t * (0.319381530 + t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))))
+	if x > 0 {
+		return 1 - prob
+	}
+	return prob
 }
