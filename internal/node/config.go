@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Config holds all configuration for a scion-libp2p node.
+// Config holds all configuration for a pathaware-libp2p node.
 type Config struct {
 	// Network
 	ListenAddrs    []string `mapstructure:"listen_addrs"`
@@ -59,7 +59,7 @@ type Config struct {
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	home, _ := os.UserHomeDir()
-	dataDir := filepath.Join(home, ".scion-libp2p")
+	dataDir := filepath.Join(home, ".pathaware-libp2p")
 
 	return Config{
 		ListenAddrs:    []string{"/ip4/0.0.0.0/tcp/9000"},

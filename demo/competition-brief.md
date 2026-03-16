@@ -1,4 +1,4 @@
-# scion-libp2p -- Competition Brief
+# pathaware-libp2p -- Competition Brief
 
 ## One-Line Summary
 
@@ -10,7 +10,7 @@ Standard P2P content delivery is path-oblivious: when multiple network paths exi
 
 ## Solution
 
-scion-libp2p adds SCION-inspired path awareness to libp2p content delivery:
+pathaware-libp2p adds SCION-inspired path awareness to libp2p content delivery:
 
 - Continuous probing of direct and relay paths measuring RTT, jitter, hop count, and success rate
 - Epsilon-greedy path selection (90% best path, 10% exploration) that distributes load across viable paths
@@ -75,12 +75,12 @@ scion-libp2p adds SCION-inspired path awareness to libp2p content delivery:
 
 ## Impact
 
-The herd effect is a fundamental problem in path-aware networks (arXiv 2509.05938, 2025). As SCION deployment grows and more networks offer path diversity, the tools for exploiting that diversity must handle multi-agent coordination. scion-libp2p demonstrates a practical, deployable solution using well-understood bandit algorithms, without requiring changes to network infrastructure.
+The herd effect is a fundamental problem in path-aware networks (arXiv 2509.05938, 2025). As SCION deployment grows and more networks offer path diversity, the tools for exploiting that diversity must handle multi-agent coordination. pathaware-libp2p demonstrates a practical, deployable solution using well-understood bandit algorithms, without requiring changes to network infrastructure.
 
 ## Status
 
 - Fully implemented and tested (M1-M4 complete)
-- Open source: https://github.com/ErenAri/SCION-libp2p
+- Open source: https://github.com/ErenAri/PathAware-libp2p
 - Evaluation framework with reproducible experiments
 - Academic paper draft targeting ACM CoNEXT / IEEE INFOCOM workshop
 

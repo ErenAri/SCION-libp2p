@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/cache"
-	"github.com/erena/scion-libp2p/internal/content"
-	"github.com/erena/scion-libp2p/internal/pathpolicy"
-	"github.com/erena/scion-libp2p/internal/protocol"
+	"github.com/ErenAri/PathAware-libp2p/internal/cache"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/pathpolicy"
+	"github.com/ErenAri/PathAware-libp2p/internal/protocol"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )

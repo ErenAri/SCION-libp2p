@@ -7,8 +7,8 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/erena/scion-libp2p/internal/cache"
-	"github.com/erena/scion-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/cache"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -94,7 +94,7 @@ func (h *BlockTransferHandler) lookupBlock(cid string) (content.Block, bool) {
 }
 
 // BlockPushID is the protocol for pushing blocks to peers.
-const BlockPushID = "/scion-libp2p/block-push/1.0.0"
+const BlockPushID = "/pathaware-libp2p/block-push/1.0.0"
 
 // BlockPushHandler handles incoming block push requests.
 type BlockPushHandler struct {

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/erena/scion-libp2p/internal/cache"
-	"github.com/erena/scion-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/cache"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
 )
 
 func TestPutGet(t *testing.T) {

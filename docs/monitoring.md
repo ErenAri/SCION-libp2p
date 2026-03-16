@@ -1,6 +1,6 @@
 # Monitoring Guide
 
-This document explains how to set up and use the monitoring stack (Prometheus + Grafana) for scion-libp2p.
+This document explains how to set up and use the monitoring stack (Prometheus + Grafana) for pathaware-libp2p.
 
 ## Quick Setup
 
@@ -15,12 +15,12 @@ curl http://localhost:3000/api/health # Grafana
 
 Access Grafana at `http://localhost:3000` with credentials `admin` / `scion`.
 
-The dashboard "SCION-libp2p" is auto-provisioned and available immediately.
+The dashboard "PathAware-libp2p" is auto-provisioned and available immediately.
 
 ## Architecture
 
 ```
-  scion-libp2p nodes                 Monitoring Stack
+  pathaware-libp2p nodes                 Monitoring Stack
   --------------------               ----------------
 
   Node 0 (:2112/metrics) ------+
@@ -40,7 +40,7 @@ The default configuration scrapes three node instances on `host.docker.internal:
 
 ```yaml
 scrape_configs:
-  - job_name: 'scion-libp2p'
+  - job_name: 'pathaware-libp2p'
     static_configs:
       - targets: ['host.docker.internal:2112']
         labels:
@@ -62,21 +62,21 @@ Each node must use a unique metrics port:
 
 ```bash
 # Node 0
-./scion-libp2p daemon --listen /ip4/127.0.0.1/tcp/9000 \
+./pathaware-libp2p daemon --listen /ip4/127.0.0.1/tcp/9000 \
   --api 127.0.0.1:9090 --metrics-addr :2112
 
 # Node 1
-./scion-libp2p daemon --listen /ip4/127.0.0.1/tcp/9001 \
+./pathaware-libp2p daemon --listen /ip4/127.0.0.1/tcp/9001 \
   --api 127.0.0.1:9091 --metrics-addr :2113
 
 # Node 2
-./scion-libp2p daemon --listen /ip4/127.0.0.1/tcp/9002 \
+./pathaware-libp2p daemon --listen /ip4/127.0.0.1/tcp/9002 \
   --api 127.0.0.1:9092 --metrics-addr :2114
 ```
 
 ## Dashboard Panels
 
-The Grafana dashboard (`dashboards/scion-libp2p.json`) contains 10 panels:
+The Grafana dashboard (`dashboards/pathaware-libp2p.json`) contains 10 panels:
 
 ```
   Row 1: Overview gauges and rates
@@ -167,7 +167,7 @@ Example Prometheus alerting rules for production use:
 
 ```yaml
 groups:
-  - name: scion-libp2p
+  - name: pathaware-libp2p
     rules:
       - alert: NoPeersConnected
         expr: scion_libp2p_peers_connected == 0

@@ -1,5 +1,5 @@
-BINARY := scion-libp2p
-MODULE := github.com/erena/scion-libp2p
+BINARY := pathaware-libp2p
+MODULE := github.com/erena/pathaware-libp2p
 RESULTS := results
 TIMESERIES := $(RESULTS)/timeseries
 RUNS := 10

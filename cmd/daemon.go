@@ -8,13 +8,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/erena/scion-libp2p/internal/node"
+	"github.com/ErenAri/PathAware-libp2p/internal/node"
 	"github.com/spf13/cobra"
 )
 
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
-	Short: "Start a long-running scion-libp2p node",
+	Short: "Start a long-running pathaware-libp2p node",
 	Long:  `Starts the node daemon which participates in the P2P network, serves content, and handles relay connections.`,
 	RunE:  runDaemon,
 }
@@ -34,7 +34,7 @@ var (
 func init() {
 	daemonCmd.Flags().StringSliceVar(&listenAddrs, "listen", []string{"/ip4/127.0.0.1/tcp/9000"}, "listen multiaddrs")
 	daemonCmd.Flags().StringSliceVar(&bootstrapPeers, "bootstrap", nil, "bootstrap peer multiaddrs")
-	daemonCmd.Flags().StringVar(&dataDir, "data-dir", "", "data directory (default: ~/.scion-libp2p)")
+	daemonCmd.Flags().StringVar(&dataDir, "data-dir", "", "data directory (default: ~/.pathaware-libp2p)")
 	daemonCmd.Flags().BoolVar(&enableRelay, "enable-relay", true, "act as relay server")
 	daemonCmd.Flags().BoolVar(&enableMDNS, "enable-mdns", true, "enable mDNS discovery")
 	daemonCmd.Flags().StringVar(&apiAddr, "api-addr", "127.0.0.1:9090", "HTTP API address")

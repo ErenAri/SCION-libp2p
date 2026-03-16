@@ -1,4 +1,4 @@
-# scion-libp2p
+# pathaware-libp2p
 
 A path-aware peer-to-peer content overlay built on [libp2p](https://libp2p.io), inspired by [SCION](https://scion-architecture.net)'s end-host path control. Combines path-quality probing, multi-armed bandit route selection, and Reed-Solomon erasure coding with content-addressed storage, NDN-style in-network caching, cooperative Bloom-filter cache exchange, and Ed25519-signed manifests.
 
@@ -8,7 +8,7 @@ A path-aware peer-to-peer content overlay built on [libp2p](https://libp2p.io), 
 
 Standard libp2p treats all network paths equally. When multiple relay paths exist between two peers, libp2p picks one arbitrarily. This leads to suboptimal content delivery: high-latency paths get used when low-latency alternatives exist, and under load all peers pile onto the same "best" path (the herd effect), causing congestion collapse.
 
-scion-libp2p adds path awareness to content delivery:
+pathaware-libp2p adds path awareness to content delivery:
 
 - Continuous probing of direct and relay paths with RTT, jitter, hop count, and success rate tracking
 - Ten path selection policies including multi-armed bandit algorithms (UCB1, Thompson Sampling, contextual LinUCB) and epsilon-greedy exploration
@@ -92,12 +92,12 @@ Per-request time series show distinct learning curves for each policy:
           v             v            v
 +------------------------------------------------------------------+
 |                   Wire Protocols                                 |
-|  /scion-libp2p/ping/1.0.0         Echo with nanosecond timestamp |
-|  /scion-libp2p/probe/1.0.0        53B path probe (RTT, hops,    |
+|  /pathaware-libp2p/ping/1.0.0         Echo with nanosecond timestamp |
+|  /pathaware-libp2p/probe/1.0.0        53B path probe (RTT, hops,    |
 |                                    jitter, throughput)           |
-|  /scion-libp2p/block/1.0.0        Request/response block fetch   |
-|  /scion-libp2p/block-push/1.0.0   Push-based replication         |
-|  /scion-libp2p/cache-summary/1.0.0 Bloom filter cache exchange  |
+|  /pathaware-libp2p/block/1.0.0        Request/response block fetch   |
+|  /pathaware-libp2p/block-push/1.0.0   Push-based replication         |
+|  /pathaware-libp2p/cache-summary/1.0.0 Bloom filter cache exchange  |
 +------------------------------------------------------------------+
 ```
 
@@ -264,7 +264,7 @@ Cache (front = most recent, back = LRU):
 
 ### Cooperative Caching (Bloom Filter Exchange)
 
-Every 30 seconds, each peer builds a Bloom filter summarizing its cached CIDs and sends it to all connected peers via the `/scion-libp2p/cache-summary/1.0.0` protocol. When fetching content, the node checks peer Bloom filters to prefer peers likely to have the block cached before falling back to path quality ranking.
+Every 30 seconds, each peer builds a Bloom filter summarizing its cached CIDs and sends it to all connected peers via the `/pathaware-libp2p/cache-summary/1.0.0` protocol. When fetching content, the node checks peer Bloom filters to prefer peers likely to have the block cached before falling back to path quality ranking.
 
 ### Proactive Replication
 
@@ -287,24 +287,24 @@ Chunk size is dynamically tuned based on file size and best-path RTT:
 
 | Command | Description |
 |---------|-------------|
-| `scion-libp2p daemon` | Start a node |
-| `scion-libp2p peers [-v]` | List connected peers |
-| `scion-libp2p ping <peer-id> [-c N]` | Ping a peer, show RTT |
-| `scion-libp2p paths [--peer <id>]` | Show paths with quality metrics |
-| `scion-libp2p publish <file>` | Chunk, sign, and announce content |
-| `scion-libp2p fetch <cid> [-o file]` | Fetch content (parallel batched) |
-| `scion-libp2p find <cid>` | Find providers via DHT |
-| `scion-libp2p pin <cid>` | Pin a CID to prevent eviction |
-| `scion-libp2p unpin <cid>` | Remove a pin |
-| `scion-libp2p pins` | List all pinned CIDs |
-| `scion-libp2p bench` | Run evaluation benchmarks |
+| `pathaware-libp2p daemon` | Start a node |
+| `pathaware-libp2p peers [-v]` | List connected peers |
+| `pathaware-libp2p ping <peer-id> [-c N]` | Ping a peer, show RTT |
+| `pathaware-libp2p paths [--peer <id>]` | Show paths with quality metrics |
+| `pathaware-libp2p publish <file>` | Chunk, sign, and announce content |
+| `pathaware-libp2p fetch <cid> [-o file]` | Fetch content (parallel batched) |
+| `pathaware-libp2p find <cid>` | Find providers via DHT |
+| `pathaware-libp2p pin <cid>` | Pin a CID to prevent eviction |
+| `pathaware-libp2p unpin <cid>` | Remove a pin |
+| `pathaware-libp2p pins` | List all pinned CIDs |
+| `pathaware-libp2p bench` | Run evaluation benchmarks |
 
 ### Daemon Flags
 
 ```
 --listen          Listen multiaddrs (default: /ip4/127.0.0.1/tcp/9000)
 --bootstrap       Bootstrap peer multiaddrs
---data-dir        Data directory (default: ~/.scion-libp2p)
+--data-dir        Data directory (default: ~/.pathaware-libp2p)
 --enable-relay    Act as relay server (default: true)
 --enable-mdns     Enable mDNS discovery (default: true)
 --api-addr        HTTP API address (default: 127.0.0.1:9090)
@@ -356,70 +356,70 @@ All endpoints served on the daemon's `--api-addr` (default `127.0.0.1:9090`).
 
 ```bash
 # Build
-go build -o scion-libp2p .
+go build -o pathaware-libp2p .
 
 # Terminal 1: Start node A
-./scion-libp2p daemon \
+./pathaware-libp2p daemon \
   --listen /ip4/127.0.0.1/tcp/9000 \
   --api-addr 127.0.0.1:9090 \
   --metrics-addr :2112 \
   --policy epsilon-greedy
 
 # Terminal 2: Start node B (discovers A via mDNS)
-./scion-libp2p daemon \
+./pathaware-libp2p daemon \
   --listen /ip4/127.0.0.1/tcp/9001 \
   --api-addr 127.0.0.1:9091 \
   --metrics-addr :2113 \
   --policy epsilon-greedy
 
 # Terminal 3: Operations
-./scion-libp2p publish myfile.txt --api-addr 127.0.0.1:9090
+./pathaware-libp2p publish myfile.txt --api-addr 127.0.0.1:9090
 # Output: Root CID: abc123...
 
-./scion-libp2p fetch abc123... -o downloaded.txt --api-addr 127.0.0.1:9091
-./scion-libp2p paths --api-addr 127.0.0.1:9091
-./scion-libp2p pin abc123... --api-addr 127.0.0.1:9090
-./scion-libp2p pins --api-addr 127.0.0.1:9090
+./pathaware-libp2p fetch abc123... -o downloaded.txt --api-addr 127.0.0.1:9091
+./pathaware-libp2p paths --api-addr 127.0.0.1:9091
+./pathaware-libp2p pin abc123... --api-addr 127.0.0.1:9090
+./pathaware-libp2p pins --api-addr 127.0.0.1:9090
 ```
 
 ### Three-Node Relay Demo
 
 ```bash
 # Node A (publisher)
-./scion-libp2p daemon --listen /ip4/127.0.0.1/tcp/9000 --api-addr 127.0.0.1:9090
+./pathaware-libp2p daemon --listen /ip4/127.0.0.1/tcp/9000 --api-addr 127.0.0.1:9090
 
 # Node R (relay)
-./scion-libp2p daemon --listen /ip4/127.0.0.1/tcp/9001 --api-addr 127.0.0.1:9091
+./pathaware-libp2p daemon --listen /ip4/127.0.0.1/tcp/9001 --api-addr 127.0.0.1:9091
 
 # Node B (fetcher, discovers A directly and via R)
-./scion-libp2p daemon --listen /ip4/127.0.0.1/tcp/9002 --api-addr 127.0.0.1:9092
+./pathaware-libp2p daemon --listen /ip4/127.0.0.1/tcp/9002 --api-addr 127.0.0.1:9092
 
 # Publish on A, fetch on B -- paths command shows direct and relay paths
-./scion-libp2p publish largefile.bin --api-addr 127.0.0.1:9090
-./scion-libp2p fetch <cid> -o output.bin --api-addr 127.0.0.1:9092
-./scion-libp2p paths --api-addr 127.0.0.1:9092
+./pathaware-libp2p publish largefile.bin --api-addr 127.0.0.1:9090
+./pathaware-libp2p fetch <cid> -o output.bin --api-addr 127.0.0.1:9092
+./pathaware-libp2p paths --api-addr 127.0.0.1:9092
 ```
 
 ### Running Benchmarks
 
 ```bash
 # Seven-way policy comparison (100 requests, 10 runs with 95% CI)
-./scion-libp2p bench --experiment compare --nodes 5 --requests 100 --runs 10 \
+./pathaware-libp2p bench --experiment compare --nodes 5 --requests 100 --runs 10 \
   --output-csv results.csv --output-timeseries ./timeseries/
 
 # Scalability experiment (5, 10, 25 nodes)
-./scion-libp2p bench --experiment scalability --runs 10 --output-csv scale.csv
+./pathaware-libp2p bench --experiment scalability --runs 10 --output-csv scale.csv
 
 # Ablation study: disable subsystems individually
-./scion-libp2p bench --experiment ablation --nodes 10 --runs 10 \
+./pathaware-libp2p bench --experiment ablation --nodes 10 --runs 10 \
   --output-csv ablation.csv
 
 # Fault injection: node kill, churn, data loss
-./scion-libp2p bench --experiment fault --nodes 10 --runs 10 \
+./pathaware-libp2p bench --experiment fault --nodes 10 --runs 10 \
   --output-csv fault_injection.csv
 
 # Single policy benchmark
-./scion-libp2p bench --experiment single --policy thompson --nodes 10
+./pathaware-libp2p bench --experiment single --policy thompson --nodes 10
 
 # Generate all plots (requires matplotlib)
 python results/plot_convergence.py
@@ -491,7 +491,7 @@ A pre-built Grafana dashboard is included with panels for:
 docker compose up -d
 
 # Access Grafana at http://localhost:3000 (admin/scion)
-# Dashboard auto-provisioned as "SCION-libp2p"
+# Dashboard auto-provisioned as "PathAware-libp2p"
 ```
 
 ## Evaluation Framework
@@ -537,7 +537,7 @@ Validates that each subsystem earns its complexity by running the same workload 
 | Random baseline | Removes all path intelligence |
 
 ```bash
-./scion-libp2p bench --experiment ablation --nodes 10 --runs 10 --output-csv ablation.csv
+./pathaware-libp2p bench --experiment ablation --nodes 10 --runs 10 --output-csv ablation.csv
 ```
 
 ### Fault Injection
@@ -552,7 +552,7 @@ Tests system resilience under active fault conditions:
 | Partial data loss (50%) | Delete 50% of stored blocks before fetching |
 
 ```bash
-./scion-libp2p bench --experiment fault --nodes 10 --runs 10 --output-csv fault_injection.csv
+./pathaware-libp2p bench --experiment fault --nodes 10 --runs 10 --output-csv fault_injection.csv
 ```
 
 ### Reproducibility
@@ -593,11 +593,11 @@ Configuration is read from (in order of precedence):
 
 1. CLI flags
 2. Explicit `--config <path>` JSON file
-3. `~/.scion-libp2p/config.json`
-4. `./scion-libp2p.json`
+3. `~/.pathaware-libp2p/config.json`
+4. `./pathaware-libp2p.json`
 5. Built-in defaults
 
-Example `scion-libp2p.json`:
+Example `pathaware-libp2p.json`:
 
 ```json
 {
@@ -625,7 +625,7 @@ Example `scion-libp2p.json`:
 ```bash
 # Build
 make build
-# or: go build -o scion-libp2p .
+# or: go build -o pathaware-libp2p .
 
 # Unit tests
 make test
@@ -643,7 +643,7 @@ make vet
 ## Project Structure
 
 ```
-scion-libp2p/
+pathaware-libp2p/
 |-- cmd/                          CLI commands (Cobra)
 |   |-- root.go                     Root command, config loading, logging
 |   |-- daemon.go                   Start a node daemon
@@ -723,7 +723,7 @@ scion-libp2p/
 |   |-- run-benchmark.sh            Orchestrated cross-container benchmarks
 |
 |-- dashboards/
-|   |-- scion-libp2p.json         Grafana dashboard (10 panels)
+|   |-- pathaware-libp2p.json         Grafana dashboard (10 panels)
 |
 |-- monitoring/
 |   |-- prometheus.yml            Prometheus scrape config

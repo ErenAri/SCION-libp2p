@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/content"
-	"github.com/erena/scion-libp2p/internal/protocol"
-	"github.com/erena/scion-libp2p/testutil"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/protocol"
+	"github.com/ErenAri/PathAware-libp2p/testutil"
 )
 
 func TestMeshFormation(t *testing.T) {
@@ -105,7 +105,7 @@ func TestContentPublishAndFetch(t *testing.T) {
 	cluster.WaitForMesh(t, 10*time.Second)
 
 	// Create a test file.
-	testData := []byte("Hello from SCION-libp2p content layer! This is a test file for integration testing.")
+	testData := []byte("Hello from PathAware-libp2p content layer! This is a test file for integration testing.")
 
 	// Chunk and store on node0.
 	blocks, err := content.Chunk(bytes.NewReader(testData), 256*1024)

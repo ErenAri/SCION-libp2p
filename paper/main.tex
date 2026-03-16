@@ -1,4 +1,4 @@
-% scion-libp2p: Path-Aware Peer-to-Peer Content Delivery
+% PathAware-libp2p: Path-Aware Peer-to-Peer Content Delivery
 % Target: ACM CoNEXT Workshop / IEEE INFOCOM Workshop
 % Build: pdflatex main && bibtex main && pdflatex main && pdflatex main
 
@@ -30,7 +30,7 @@
 \email{erenari27@gmail.com}
 
 \begin{abstract}
-Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{scion-libp2p}, a path-aware P2P content overlay that combines continuous path probing with multi-armed bandit path selection, NDN-style in-network relay caching, cooperative cache coordination via Bloom filter exchange, and Reed-Solomon erasure coding for storage-efficient replication. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies configurable selection policies with controlled exploration to distribute load across viable paths. We implement and evaluate seven path selection strategies---epsilon-greedy, decaying-epsilon, UCB1, Thompson sampling, contextual bandits (LinUCB), greedy min-RTT, and random---across cluster sizes of 5 to 25 nodes with 100 requests per run. Exploration-heavy MAB policies suffer a \emph{curse of exploration} at scale: $\varepsilon$-greedy P95 degrades $27{\times}$ from $N{=}5$ to $N{=}25$ (9.8$\to$270\,ms) as the exploration space grows combinatorially, while posterior-guided Thompson sampling ($+160\%$) and contextual LinUCB ($+70\%$) remain viable by concentrating exploration on promising paths. Greedy min-RTT ($+35\%$) and random ($+45\%$) are the most scale-stable under homogeneous conditions, achieving 158\,MB/s at $N{=}25$. Multipath bandwidth aggregation via disjoint path racing reduces fetch latency by parallelizing block retrieval across independent paths. Popularity-aware caching outperforms pure LRU by 38\% in cache hit ratio for Zipf-distributed workloads. Erasure coding achieves equivalent fault tolerance to full replication at 1.5$\times$ storage overhead instead of $N\times$. Content remains fully available after 30\% node failure. A Docker Compose WAN simulation with \texttt{tc netem} validates behavior under heterogeneous latency conditions.
+Standard peer-to-peer content delivery treats all network paths equally, ignoring path quality differences and causing congestion when peers greedily converge on the lowest-latency route. We present \textsc{PathAware-libp2p}, a path-aware P2P content overlay that combines continuous path probing with multi-armed bandit path selection, NDN-style in-network relay caching, cooperative cache coordination via Bloom filter exchange, and Reed-Solomon erasure coding for storage-efficient replication. Built on libp2p and inspired by SCION's end-host path control, our system probes direct and relay paths for RTT, jitter, hop count, and success rate, then applies configurable selection policies with controlled exploration to distribute load across viable paths. We implement and evaluate seven path selection strategies---epsilon-greedy, decaying-epsilon, UCB1, Thompson sampling, contextual bandits (LinUCB), greedy min-RTT, and random---across cluster sizes of 5 to 25 nodes with 100 requests per run. Exploration-heavy MAB policies suffer a \emph{curse of exploration} at scale: $\varepsilon$-greedy P95 degrades $27{\times}$ from $N{=}5$ to $N{=}25$ (9.8$\to$270\,ms) as the exploration space grows combinatorially, while posterior-guided Thompson sampling ($+160\%$) and contextual LinUCB ($+70\%$) remain viable by concentrating exploration on promising paths. Greedy min-RTT ($+35\%$) and random ($+45\%$) are the most scale-stable under homogeneous conditions, achieving 158\,MB/s at $N{=}25$. Multipath bandwidth aggregation via disjoint path racing reduces fetch latency by parallelizing block retrieval across independent paths. Popularity-aware caching outperforms pure LRU by 38\% in cache hit ratio for Zipf-distributed workloads. Erasure coding achieves equivalent fault tolerance to full replication at 1.5$\times$ storage overhead instead of $N\times$. Content remains fully available after 30\% node failure. A Docker Compose WAN simulation with \texttt{tc netem} validates behavior under heterogeneous latency conditions.
 \end{abstract}
 
 \keywords{path-aware networking, peer-to-peer, content delivery, multi-armed bandits, libp2p, in-network caching, exploration-exploitation}
@@ -45,7 +45,7 @@ The Internet's routing architecture is path-oblivious: end hosts have no control
 
 When multiple relay paths exist between two libp2p peers, the standard stack picks one arbitrarily. Under load, a greedy optimization that always selects the lowest-latency path causes all peers to converge on the same route, leading to the \emph{herd effect}---a well-studied phenomenon in path-aware networks~\cite{pathselection2025} where rational path selection by individual agents produces collectively suboptimal outcomes.
 
-We present \textsc{scion-libp2p}, a path-aware P2P content overlay that bridges this gap. Our system is SCION-\emph{inspired} rather than SCION-\emph{integrated}: it borrows SCION's philosophy of end-host path control, multi-path awareness, and active path probing, but applies these principles at the libp2p overlay layer using standard TCP transport. Unlike systems that require native SCION infrastructure~\cite{gartner2025ipfs,btscion2023}, our approach is immediately deployable on any existing network without infrastructure changes. The key insight is that even within an overlay network, path diversity exists through different relay chains, and this diversity can be exploited through bandit-based exploration to improve content delivery performance while avoiding the herd effect that plagues greedy path selection.
+We present \textsc{PathAware-libp2p}, a path-aware P2P content overlay that bridges this gap. Our system is SCION-\emph{inspired} rather than SCION-\emph{integrated}: it borrows SCION's philosophy of end-host path control, multi-path awareness, and active path probing, but applies these principles at the libp2p overlay layer using standard TCP transport. Unlike systems that require native SCION infrastructure~\cite{gartner2025ipfs,btscion2023}, our approach is immediately deployable on any existing network without infrastructure changes. The key insight is that even within an overlay network, path diversity exists through different relay chains, and this diversity can be exploited through bandit-based exploration to improve content delivery performance while avoiding the herd effect that plagues greedy path selection.
 
 \paragraph{Contributions.}
 \begin{enumerate}
@@ -98,7 +98,7 @@ We formalize the path selection problem as follows. Given a set of $N$ peers con
 
 \subsection{Architecture Overview}
 
-\textsc{scion-libp2p} is structured as five layers (Figure~\ref{fig:architecture}):
+\textsc{PathAware-libp2p} is structured as five layers (Figure~\ref{fig:architecture}):
 
 \begin{figure}[t]
 \centering
@@ -300,7 +300,7 @@ Beyond epsilon-greedy and UCB1, we implement two additional bandit algorithms:
 To improve fetch performance, peers exchange cache summaries so that fetchers can preferentially contact peers that likely have the desired block cached. Every 30 seconds, each node:
 \begin{enumerate}
 \item Constructs a Bloom filter (1\% false positive rate) from all cached block CIDs.
-\item Sends the serialized filter (typically 1--2\,KB) to all connected peers via the \texttt{/scion-libp2p/cache-summary/1.0.0} protocol.
+\item Sends the serialized filter (typically 1--2\,KB) to all connected peers via the \texttt{/pathaware-libp2p/cache-summary/1.0.0} protocol.
 \end{enumerate}
 
 When fetching a block from the network, providers whose Bloom filters indicate they likely have the block cached are promoted to the front of the provider list, before path-quality sorting. This reduces cache misses by directing requests to peers with warm caches.
@@ -342,17 +342,17 @@ This ensures that popular content survives publisher disconnection and is availa
 \section{Implementation}
 \label{sec:implementation}
 
-\textsc{scion-libp2p} is implemented in Go (approximately 4{,}500 lines of application code, excluding tests and generated files) using libp2p v0.40.0, go-libp2p-kad-dht v0.28.1, gonum for LinUCB matrix operations, and klauspost/reedsolomon for erasure coding.
+\textsc{PathAware-libp2p} is implemented in Go (approximately 4{,}500 lines of application code, excluding tests and generated files) using libp2p v0.40.0, go-libp2p-kad-dht v0.28.1, gonum for LinUCB matrix operations, and klauspost/reedsolomon for erasure coding.
 
 \paragraph{Transport.} The libp2p host uses TCP with circuit relay v2 for NAT traversal and multi-hop paths. Ed25519 identity keys are persisted to disk. Peer discovery uses both mDNS (LAN) and Kademlia DHT (WAN) simultaneously.
 
 \paragraph{Wire protocols.} Five custom stream protocols handle network operations:
 \begin{itemize}
-\item \textbf{Ping} (\texttt{/scion-libp2p/ping/1.0.0}): 8-byte timestamp echo for latency measurement.
-\item \textbf{Probe} (\texttt{/scion-libp2p/probe/1.0.0}): 53-byte path quality probe with hop counting and nonce verification.
-\item \textbf{Block transfer} (\texttt{/scion-libp2p/block/1.0.0}): Request/response block fetch by CID with SHA-256 integrity verification.
-\item \textbf{Block push} (\texttt{/scion-libp2p/block-push/1.0.0}): Proactive replication with CID verification and 16\,MB size limit.
-\item \textbf{Cache summary} (\texttt{/scion-libp2p/cache-summary/1.0.0}): Length-prefixed Bloom filter exchange for cooperative caching.
+\item \textbf{Ping} (\texttt{/pathaware-libp2p/ping/1.0.0}): 8-byte timestamp echo for latency measurement.
+\item \textbf{Probe} (\texttt{/pathaware-libp2p/probe/1.0.0}): 53-byte path quality probe with hop counting and nonce verification.
+\item \textbf{Block transfer} (\texttt{/pathaware-libp2p/block/1.0.0}): Request/response block fetch by CID with SHA-256 integrity verification.
+\item \textbf{Block push} (\texttt{/pathaware-libp2p/block-push/1.0.0}): Proactive replication with CID verification and 16\,MB size limit.
+\item \textbf{Cache summary} (\texttt{/pathaware-libp2p/cache-summary/1.0.0}): Length-prefixed Bloom filter exchange for cooperative caching.
 \end{itemize}
 
 \paragraph{Content addressing.} Files are split into chunks (default 256\,KB, or adaptively sized based on file size and path RTT). Each chunk's CID is the hex-encoded SHA-256 hash of its data. A manifest links the root CID (hash of all chunk CIDs concatenated) to its constituent chunks, and can be signed with Ed25519 for publisher authentication. When erasure coding is enabled, each chunk is further encoded into $k{+}m$ Reed-Solomon fragments.
@@ -367,7 +367,7 @@ This ensures that popular content survives publisher disconnection and is availa
 \section{Evaluation}
 \label{sec:evaluation}
 
-We evaluate \textsc{scion-libp2p} through seven experiments: a seven-way policy comparison, a scalability study, an ablation study isolating subsystem contributions, a fault injection analysis, a caching effectiveness test, a resilience experiment, and a WAN simulation using Docker Compose with \texttt{tc netem}. All experiments use 100 requests per run with 10 runs averaged and 95\% confidence intervals. Localhost experiments use our built-in benchmarking framework, which creates ephemeral multi-node clusters on a single machine with TCP transport on \texttt{127.0.0.1}.
+We evaluate \textsc{PathAware-libp2p} through seven experiments: a seven-way policy comparison, a scalability study, an ablation study isolating subsystem contributions, a fault injection analysis, a caching effectiveness test, a resilience experiment, and a WAN simulation using Docker Compose with \texttt{tc netem}. All experiments use 100 requests per run with 10 runs averaged and 95\% confidence intervals. Localhost experiments use our built-in benchmarking framework, which creates ephemeral multi-node clusters on a single machine with TCP transport on \texttt{127.0.0.1}.
 
 \subsection{Experimental Setup}
 

@@ -10,8 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/erena/scion-libp2p/internal/protocol"
-	"github.com/erena/scion-libp2p/internal/transport"
+	"github.com/ErenAri/PathAware-libp2p/internal/protocol"
+	"github.com/ErenAri/PathAware-libp2p/internal/transport"
 )
 
 // Manager runs periodic path probing and maintains scored path sets.

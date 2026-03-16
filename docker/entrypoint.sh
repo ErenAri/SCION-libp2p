@@ -34,7 +34,7 @@ fi
 
 # Start the daemon with provided arguments.
 if [ -n "$BOOTSTRAP_ADDR" ]; then
-    exec scion-libp2p daemon "$@" --bootstrap "$BOOTSTRAP_ADDR"
+    exec pathaware-libp2p daemon "$@" --bootstrap "$BOOTSTRAP_ADDR"
 else
-    exec scion-libp2p daemon "$@"
+    exec pathaware-libp2p daemon "$@"
 fi

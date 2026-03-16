@@ -1,4 +1,4 @@
-# scion-libp2p -- Presentation Outline (2 Minutes)
+# pathaware-libp2p -- Presentation Outline (2 Minutes)
 
 ## Slide 1: Problem (20 seconds)
 
@@ -74,10 +74,10 @@ networks without infrastructure changes."
 
 ## Closing
 
-"scion-libp2p: path-aware content delivery that avoids congestion
+"pathaware-libp2p: path-aware content delivery that avoids congestion
 through controlled exploration."
 
-Repository: github.com/ErenAri/SCION-libp2p
+Repository: github.com/ErenAri/PathAware-libp2p
 
 ## Backup Slides
 

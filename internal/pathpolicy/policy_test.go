@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/pathpolicy"
+	"github.com/ErenAri/PathAware-libp2p/internal/pathpolicy"
 )
 
 func TestLatencyPolicy(t *testing.T) {

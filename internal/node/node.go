@@ -10,13 +10,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/erena/scion-libp2p/internal/cache"
-	"github.com/erena/scion-libp2p/internal/content"
-	"github.com/erena/scion-libp2p/internal/erasure"
-	"github.com/erena/scion-libp2p/internal/metrics"
-	"github.com/erena/scion-libp2p/internal/pathpolicy"
-	"github.com/erena/scion-libp2p/internal/protocol"
-	"github.com/erena/scion-libp2p/internal/transport"
+	"github.com/ErenAri/PathAware-libp2p/internal/cache"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/erasure"
+	"github.com/ErenAri/PathAware-libp2p/internal/metrics"
+	"github.com/ErenAri/PathAware-libp2p/internal/pathpolicy"
+	"github.com/ErenAri/PathAware-libp2p/internal/protocol"
+	"github.com/ErenAri/PathAware-libp2p/internal/transport"
 )
 
 // Node is the top-level struct that wires all subsystems together.

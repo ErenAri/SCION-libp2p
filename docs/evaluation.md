@@ -26,7 +26,7 @@ The evaluation framework supports three experiment types:
 ### Prerequisites
 
 ```bash
-go build -o scion-libp2p .
+go build -o pathaware-libp2p .
 ```
 
 ### Three-Way Comparison
@@ -51,7 +51,7 @@ This is the core experiment. It compares three path selection strategies:
 
 ```bash
 # Run with 5 nodes, 1 MB content, 20 fetch requests
-./scion-libp2p bench \
+./pathaware-libp2p bench \
   --experiment compare \
   --nodes 5 \
   --size 1048576 \
@@ -76,7 +76,7 @@ random               5     18.7     17.2     28.9     35.3      5.43   50.0%  10
 Runs the three-way comparison at multiple node counts to show how each policy scales:
 
 ```bash
-./scion-libp2p bench \
+./pathaware-libp2p bench \
   --experiment scalability \
   --size 1048576 \
   --requests 10 \
@@ -110,7 +110,7 @@ The greedy min-RTT policy degrades faster at scale because all nodes converge on
 For detailed analysis of a specific configuration:
 
 ```bash
-./scion-libp2p bench \
+./pathaware-libp2p bench \
   --experiment single \
   --policy epsilon-greedy \
   --epsilon 0.15 \
@@ -165,7 +165,7 @@ For publication, run each experiment configuration multiple times:
 
 ```bash
 for run in 1 2 3 4 5; do
-  ./scion-libp2p bench \
+  ./pathaware-libp2p bench \
     --experiment compare \
     --nodes 10 \
     --requests 50 \
@@ -199,9 +199,9 @@ For real-time observation during experiments, start the monitoring stack:
 docker compose up -d
 
 # Run daemon nodes with metrics enabled
-./scion-libp2p daemon --metrics-addr :2112 ...
-./scion-libp2p daemon --metrics-addr :2113 ...
-./scion-libp2p daemon --metrics-addr :2114 ...
+./pathaware-libp2p daemon --metrics-addr :2112 ...
+./pathaware-libp2p daemon --metrics-addr :2113 ...
+./pathaware-libp2p daemon --metrics-addr :2114 ...
 
 # Open Grafana dashboard
 # http://localhost:3000 (admin/scion)

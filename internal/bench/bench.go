@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/content"
-	"github.com/erena/scion-libp2p/internal/protocol"
-	"github.com/erena/scion-libp2p/testutil"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/protocol"
+	"github.com/ErenAri/PathAware-libp2p/testutil"
 )
 
 // Config configures a benchmark run.

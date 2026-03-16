@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/erena/scion-libp2p/cmd"
+	"github.com/ErenAri/PathAware-libp2p/cmd"
 )
 
 func main() {

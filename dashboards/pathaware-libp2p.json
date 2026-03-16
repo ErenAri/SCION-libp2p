@@ -250,9 +250,9 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": ["scion-libp2p"],
+  "tags": ["pathaware-libp2p"],
   "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
-  "title": "SCION-libp2p",
-  "uid": "scion-libp2p-overview"
+  "title": "PathAware-libp2p",
+  "uid": "pathaware-libp2p-overview"
 }

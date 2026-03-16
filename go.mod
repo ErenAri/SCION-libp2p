@@ -1,4 +1,4 @@
-module github.com/erena/scion-libp2p
+module github.com/ErenAri/PathAware-libp2p
 
 go 1.24
 

@@ -15,7 +15,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "scion-libp2p",
+	Use:   "pathaware-libp2p",
 	Short: "SCION-inspired path-aware P2P content overlay",
 	Long: `A path-aware, secure P2P content overlay built on libp2p.
 Uses SCION-inspired relay path selection to let end-hosts choose
@@ -43,7 +43,7 @@ func LoadConfigFile() map[string]interface{} {
 		// Try default locations.
 		home, err := os.UserHomeDir()
 		if err == nil {
-			defaultPath := filepath.Join(home, ".scion-libp2p", "config.json")
+			defaultPath := filepath.Join(home, ".pathaware-libp2p", "config.json")
 			if _, err := os.Stat(defaultPath); err == nil {
 				path = defaultPath
 			}
@@ -52,8 +52,8 @@ func LoadConfigFile() map[string]interface{} {
 
 	if path == "" {
 		// Also check current directory.
-		if _, err := os.Stat("scion-libp2p.json"); err == nil {
-			path = "scion-libp2p.json"
+		if _, err := os.Stat("pathaware-libp2p.json"); err == nil {
+			path = "pathaware-libp2p.json"
 		}
 	}
 

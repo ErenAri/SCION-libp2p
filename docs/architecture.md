@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes the internal architecture of scion-libp2p, its subsystems, data flows, and design rationale.
+This document describes the internal architecture of pathaware-libp2p, its subsystems, data flows, and design rationale.
 
 ## System Overview
 
-scion-libp2p is structured as five layers, each with clear responsibilities:
+pathaware-libp2p is structured as five layers, each with clear responsibilities:
 
 ```
 Layer 5:  CLI + HTTP API
@@ -104,7 +104,7 @@ Two discovery mechanisms run in parallel:
          Host.Connect(peerInfo)
 ```
 
-The DHT uses protocol prefix `/scion-libp2p` to isolate from other DHT networks. It runs in `ModeAutoServer` (acts as both client and server).
+The DHT uses protocol prefix `/pathaware-libp2p` to isolate from other DHT networks. It runs in `ModeAutoServer` (acts as both client and server).
 
 ### Relay
 
@@ -281,7 +281,7 @@ The Node's replication loop (every 60s) calls `PopularBlocks()`, fetches each bl
 
 ## Wire Protocols
 
-### Ping (`/scion-libp2p/ping/1.0.0`)
+### Ping (`/pathaware-libp2p/ping/1.0.0`)
 
 File: `internal/protocol/ping.go`
 
@@ -295,7 +295,7 @@ File: `internal/protocol/ping.go`
   RTT = time.Since(sent)
 ```
 
-### Probe (`/scion-libp2p/probe/1.0.0`)
+### Probe (`/pathaware-libp2p/probe/1.0.0`)
 
 File: `internal/protocol/probe.go`
 
@@ -317,7 +317,7 @@ File: `internal/protocol/probe.go`
   verify pathID matches
 ```
 
-### Block Transfer (`/scion-libp2p/block/1.0.0`)
+### Block Transfer (`/pathaware-libp2p/block/1.0.0`)
 
 File: `internal/protocol/blocktransfer.go`
 
@@ -339,7 +339,7 @@ File: `internal/protocol/blocktransfer.go`
 
 Server caches served blocks in the LRU cache (NDN-style relay caching).
 
-### Block Push (`/scion-libp2p/block-push/1.0.0`)
+### Block Push (`/pathaware-libp2p/block-push/1.0.0`)
 
 File: `internal/protocol/blocktransfer.go`
 
@@ -373,7 +373,7 @@ File: `internal/node/node.go`
       5. Create BlockCache, attach pin checker
       6. Create ReplicationTracker (threshold=5)
       7. Parse bootstrap peers
-      8. Setup DHT (Kademlia, /scion-libp2p prefix)
+      8. Setup DHT (Kademlia, /pathaware-libp2p prefix)
       9. Create ContentRouter (DHT wrapper)
      10. Enable relay service (if configured)
      11. Start mDNS (if configured)

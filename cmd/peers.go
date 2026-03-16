@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/node"
+	"github.com/ErenAri/PathAware-libp2p/internal/node"
 	"github.com/spf13/cobra"
 )
 

@@ -48,8 +48,8 @@ coverage.out
 coverage.html
 
 # Binary
-scion-libp2p
-scion-libp2p.exe
+pathaware-libp2p
+pathaware-libp2p.exe
 
 # Data directory
 /data/

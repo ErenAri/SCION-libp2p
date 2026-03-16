@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/erena/scion-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
 )
 
 func TestChunkSmallFile(t *testing.T) {

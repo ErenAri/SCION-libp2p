@@ -13,13 +13,13 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-const mdnsServiceTag = "scion-libp2p.local"
+const mdnsServiceTag = "pathaware-libp2p.local"
 
 // SetupDHT initializes the Kademlia DHT for peer and content discovery.
 func SetupDHT(ctx context.Context, h host.Host, bootstrapPeers []peer.AddrInfo) (*dht.IpfsDHT, error) {
 	opts := []dht.Option{
 		dht.Mode(dht.ModeAutoServer),
-		dht.ProtocolPrefix("/scion-libp2p"),
+		dht.ProtocolPrefix("/pathaware-libp2p"),
 	}
 
 	d, err := dht.New(ctx, h, opts...)

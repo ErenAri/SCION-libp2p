@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/erena/scion-libp2p/internal/content"
+	"github.com/ErenAri/PathAware-libp2p/internal/content"
 )
 
 // PinChecker is an interface for checking if a CID is pinned.

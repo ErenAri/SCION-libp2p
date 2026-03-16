@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/node"
+	"github.com/ErenAri/PathAware-libp2p/internal/node"
 )
 
 // Cluster manages multiple Node instances for integration testing.

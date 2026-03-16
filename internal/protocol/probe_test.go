@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erena/scion-libp2p/internal/protocol"
+	"github.com/ErenAri/PathAware-libp2p/internal/protocol"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 )

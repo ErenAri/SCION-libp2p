@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/erena/scion-libp2p/internal/cache"
+	"github.com/ErenAri/PathAware-libp2p/internal/cache"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/crypto"
 )

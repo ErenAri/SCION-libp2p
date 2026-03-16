@@ -1,14 +1,14 @@
 # Wire Protocol Specification
 
-This document specifies the four wire protocols used by scion-libp2p. All protocols run over libp2p streams (multiplexed over TCP or relay connections). Multi-byte integers use big-endian byte order.
+This document specifies the four wire protocols used by pathaware-libp2p. All protocols run over libp2p streams (multiplexed over TCP or relay connections). Multi-byte integers use big-endian byte order.
 
 ## Protocol IDs
 
 ```
-  /scion-libp2p/ping/1.0.0           Echo-based latency measurement
-  /scion-libp2p/probe/1.0.0          Path quality probe with hop counting
-  /scion-libp2p/block/1.0.0          Block fetch (request/response)
-  /scion-libp2p/block-push/1.0.0     Push-based block replication
+  /pathaware-libp2p/ping/1.0.0           Echo-based latency measurement
+  /pathaware-libp2p/probe/1.0.0          Path quality probe with hop counting
+  /pathaware-libp2p/block/1.0.0          Block fetch (request/response)
+  /pathaware-libp2p/block-push/1.0.0     Push-based block replication
 ```
 
 ## 1. Ping Protocol

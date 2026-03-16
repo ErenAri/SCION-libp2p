@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Metrics holds all Prometheus metrics for a scion-libp2p node.
+// Metrics holds all Prometheus metrics for a pathaware-libp2p node.
 // Each node gets its own registry to avoid panics in multi-node scenarios.
 type Metrics struct {
 	Registry            *prometheus.Registry

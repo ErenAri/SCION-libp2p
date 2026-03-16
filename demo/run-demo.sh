@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# scion-libp2p 2-Minute Demo Script
+# pathaware-libp2p 2-Minute Demo Script
 #
 # Demonstrates:
 #   1. Three-node cluster with path-aware content delivery
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-BINARY="./scion-libp2p"
+BINARY="./pathaware-libp2p"
 DEMO_FILE="demo/demo-content.txt"
 PIDS=()
 WITH_MONITORING=false
@@ -59,7 +59,7 @@ pause() {
 header "Step 0: Build"
 
 if [ ! -f "$BINARY" ] && [ ! -f "${BINARY}.exe" ]; then
-  echo "Building scion-libp2p..."
+  echo "Building pathaware-libp2p..."
   go build -o "$BINARY" .
 fi
 
@@ -73,7 +73,7 @@ echo "Binary ready: $BINARY"
 
 mkdir -p demo
 cat > "$DEMO_FILE" << 'CONTENT'
-scion-libp2p Demo Content
+pathaware-libp2p Demo Content
 ==========================
 
 This file demonstrates path-aware content delivery. When fetched, the system:
@@ -265,9 +265,9 @@ echo "  5. Three-way policy comparison showing herd effect mitigation"
 echo ""
 if [ "$WITH_MONITORING" = true ]; then
   echo "Grafana dashboard: http://localhost:3000"
-  echo "  Dashboard: SCION-libp2p"
+  echo "  Dashboard: PathAware-libp2p"
   echo "  Login: admin / scion"
   echo ""
 fi
-echo "Repository: https://github.com/ErenAri/SCION-libp2p"
+echo "Repository: https://github.com/ErenAri/PathAware-libp2p"
 echo ""

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/erena/scion-libp2p/internal/bench"
+	"github.com/ErenAri/PathAware-libp2p/internal/bench"
 	"github.com/spf13/cobra"
 )
 
